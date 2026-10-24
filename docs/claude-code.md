@@ -72,6 +72,19 @@ Prompt rules are not a replacement for deterministic controls. Real infrastructu
 
 Hooks/permissions can be added later after they are tested on the actual admin workstation. This avoids an untested blocking rule that breaks legitimate operations or creates false confidence.
 
+## Deterministic safety hooks
+
+The project also contains `.claude/settings.json` with PreToolUse hooks.
+
+- Bash operations pass through a small destructive-command gate.
+- Read/Write/Edit operations pass through a protected-path gate for common secret/key/state files.
+
+These hooks require Bash and `jq` on the workstation running Claude Code. Claude Code requires review of project hook changes before they take effect.
+
+The hooks are intentionally conservative and small. They do not replace least-privilege accounts, sudo policy, Vault, firewalls, branch protection, CI approvals, or operator judgment.
+
+See `.claude/hooks/README.md`.
+
 ## Local/private configuration
 
 Do not commit Claude credentials, API keys, MCP secrets, private inventory, or machine-specific secret settings. Project agents/skills/rules are shared; personal preferences belong in user-level Claude configuration.
