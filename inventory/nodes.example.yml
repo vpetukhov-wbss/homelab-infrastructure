@@ -1,0 +1,70 @@
+# Public example inventory.
+# Real environment-specific values belong in a non-committed local inventory
+# or are injected securely by the deployment process.
+
+network:
+  wireguard_cidr: 10.44.0.0/24
+  lan_cidr: 192.168.50.0/24
+
+nodes:
+  edge:
+    hostname: hl-edge-01
+    wireguard_ip: 10.44.0.1
+    roles:
+      - gateway
+      - caddy
+      - wireguard
+
+  data_primary:
+    hostname: hl-data-01
+    wireguard_ip: 10.44.0.2
+    roles:
+      - postgres_primary
+      - mongodb_primary
+      - redis_primary
+
+  data_replica:
+    hostname: hl-data-02
+    wireguard_ip: 10.44.0.3
+    roles:
+      - postgres_replica
+      - mongodb_secondary
+      - redis_replica
+      - backup
+      - sftp
+
+  management:
+    hostname: hl-mgmt-01
+    wireguard_ip: 10.44.0.4
+    roles:
+      - apps
+      - nginx
+      - vault
+      - portainer
+      - prometheus
+      - grafana
+      - jenkins
+      - gitea
+
+  sql_primary:
+    hostname: hl-sql-01
+    wireguard_ip: 10.44.0.5
+    hardware_hint: Lenovo ThinkPad
+    roles:
+      - sqlserver_primary
+
+  sql_secondary:
+    hostname: hl-sql-02
+    wireguard_ip: 10.44.0.6
+    hardware_hint: Fujitsu laptop
+    roles:
+      - sqlserver_secondary
+
+  devops_future:
+    hostname: hl-devops-01
+    wireguard_ip: 10.44.0.7
+    enabled: false
+    roles:
+      - gitea
+      - jenkins
+      - build_agents
