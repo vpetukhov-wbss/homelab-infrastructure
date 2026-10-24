@@ -449,6 +449,16 @@ The goal is not to hide those limitations. The goal is to understand and enginee
 
 ---
 
+## Claude Code engineering team
+
+The repository includes a shared Claude Code setup under `.claude/` so AI-assisted work follows the same architecture, security, and operational standards as human changes.
+
+Specialists cover platform architecture, Linux administration, networking/security, data reliability, Terraform/Ansible, Jenkins/Gitea, SRE/DR, security review, and technical project management. Reusable workflows include `/plan-change`, `/bootstrap-node`, `/security-review`, `/incident-response`, and `/dr-drill`.
+
+See [docs/claude-code.md](docs/claude-code.md).
+
+---
+
 ## License
 
 MIT — see LICENSE.
