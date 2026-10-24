@@ -426,3 +426,62 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+
+# ---------------------------------------------------------------------------
+# HomeLab infrastructure
+# ---------------------------------------------------------------------------
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.auto.tfvars
+.terraform.lock.hcl.backup
+crash.log
+crash.*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+secrets/
+private/
+credentials/
+
+# Keys and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+**/wireguard/privatekey
+**/wg-private.conf
+**/.vault-token
+**/vault-init.json
+**/unseal-keys.*
+**/recovery-keys.*
+**/age/keys.txt
+**/keys.txt
+
+# Ansible local/generated inventory
+inventory/local.yml
+inventory/hosts.yml
+ansible/inventory/local*
+*.retry
+
+# SOPS decrypted material
+*.dec.yaml
+*.dec.yml
+*.decrypted.*
+
+# Backup/runtime data
+backups/
+data/
+volumes/
+*.bak
