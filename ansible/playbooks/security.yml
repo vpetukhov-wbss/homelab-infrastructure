@@ -1,0 +1,8 @@
+---
+# Firewall + SSH hardening across the 3 wired ThinkCentres.
+- name: Firewall + SSH hardening
+  hosts: edge:data_primary:data_replica
+  gather_facts: true
+  roles:
+    - firewall
+    - ssh_hardening

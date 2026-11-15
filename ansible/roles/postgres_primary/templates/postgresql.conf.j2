@@ -1,0 +1,28 @@
+# Managed by Ansible (homelab) — node2 Postgres PRIMARY
+# Tuned for a 3.7GB RAM box on a spinning HDD (mostly dedicated to PG + a light Redis).
+listen_addresses = '*'
+port = 5432
+max_connections = 100
+
+# Memory (≈ leave ~2GB for OS + Redis + page cache)
+shared_buffers = 768MB
+effective_cache_size = 2304MB
+maintenance_work_mem = 128MB
+work_mem = 8MB
+
+# WAL / replication (streaming to node3 replica)
+wal_level = replica
+max_wal_senders = 5
+max_replication_slots = 5
+wal_compression = on
+hot_standby = on
+synchronous_commit = on          # local durability kept; replication is ASYNC (no synchronous_standby_names)
+
+# HDD-aware planner/IO
+random_page_cost = 4.0
+effective_io_concurrency = 2
+checkpoint_completion_target = 0.9
+
+# Logging (light)
+logging_collector = off
+log_min_duration_statement = 1000

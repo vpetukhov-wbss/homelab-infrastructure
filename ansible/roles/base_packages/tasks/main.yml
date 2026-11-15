@@ -1,0 +1,25 @@
+---
+- name: Install base packages (wireguard, firewall, sync, utils)
+  ansible.builtin.apt:
+    name:
+      - wireguard
+      - wireguard-tools
+      - ufw
+      - rsync
+      - lsyncd
+      - python3-pymysql
+      - chrony
+      - htop
+      - curl
+    state: present
+    update_cache: true
+  become: true
+
+- name: Enable IPv4 forwarding (for WireGuard overlay)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  become: true

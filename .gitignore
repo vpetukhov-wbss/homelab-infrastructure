@@ -485,3 +485,15 @@ backups/
 data/
 volumes/
 *.bak
+
+# ---------------------------------------------------------------------------
+# HomeLab Ansible — real secrets & local inventory (NEVER commit to public repo)
+# ---------------------------------------------------------------------------
+**/vault.yml
+**/db_secrets.yml
+**/*.vault
+*vault-pass*
+.homelab_vault_pass
+ansible/.venv/
+inventory/group_vars/**/vault.yml
+inventory/group_vars/**/db_secrets.yml

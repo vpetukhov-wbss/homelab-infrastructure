@@ -1,0 +1,16 @@
+# Managed by Ansible (homelab) — node2 Redis PRIMARY
+bind 0.0.0.0
+protected-mode yes
+port 6379
+requirepass {{ vault_redis_password }}
+masterauth {{ vault_redis_password }}
+
+# Persistence (AOF, HDD-friendly fsync)
+appendonly yes
+appendfsync everysec
+save 900 1
+save 300 10
+
+# Memory cap (light footprint on a shared box)
+maxmemory 256mb
+maxmemory-policy noeviction

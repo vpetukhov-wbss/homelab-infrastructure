@@ -1,0 +1,9 @@
+---
+# node2: Postgres PRIMARY + Redis PRIMARY. Requires WG overlay up first.
+- name: Data-primary stack (node2)
+  hosts: data_primary
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/data-primary
+  roles:
+    - postgres_primary

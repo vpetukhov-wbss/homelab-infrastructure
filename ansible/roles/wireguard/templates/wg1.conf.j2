@@ -1,0 +1,16 @@
+[Interface]
+# {{ inventory_hostname }} — homelab overlay node
+Address = {{ wg_overlay_ip }}/24
+PrivateKey = {{ wg_private_key }}
+ListenPort = 51821
+{% for host in (groups['edge'] + groups['data_primary'] + groups['data_replica']) %}
+{% if host != inventory_hostname %}
+
+[Peer]
+# {{ host }}
+PublicKey = {{ hostvars[host].wg_public_key }}
+AllowedIPs = {{ hostvars[host].wg_overlay_ip }}/32
+Endpoint = {{ hostvars[host].ansible_host }}:51821
+PersistentKeepalive = 25
+{% endif %}
+{% endfor %}

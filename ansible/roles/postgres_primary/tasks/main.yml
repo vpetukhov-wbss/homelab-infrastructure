@@ -1,0 +1,58 @@
+---
+# Deploy Postgres PRIMARY + Redis PRIMARY on node2, create the replication role.
+- name: Create stack directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Template Postgres + Redis configs and compose
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ stack_dir }}/{{ item.dest }}"
+    mode: "0640"
+  loop:
+    - { src: postgresql.conf.j2, dest: postgresql.conf }
+    - { src: pg_hba.conf.j2, dest: pg_hba.conf }
+    - { src: redis.conf.j2, dest: redis.conf }
+    - { src: docker-compose.yml.j2, dest: docker-compose.yml }
+
+- name: Deploy the data-primary stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for Postgres to accept connections
+  ansible.builtin.command:
+    cmd: docker exec postgres-primary pg_isready -U postgres -d homelab
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: Create replication role (idempotent)
+  ansible.builtin.command:
+    cmd: >
+      docker exec postgres-primary psql -U postgres -tAc
+      "SELECT 1 FROM pg_roles WHERE rolname='replicator'"
+  register: repl_exists
+  changed_when: false
+
+- name: Create replicator user if missing
+  ansible.builtin.command:
+    cmd: >
+      docker exec postgres-primary psql -U postgres -c
+      "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '{{ vault_pg_replicator_password }}';"
+  when: repl_exists.stdout != "1"
+  no_log: true
+
+- name: Ensure a physical replication slot for node3 exists
+  ansible.builtin.command:
+    cmd: >
+      docker exec postgres-primary psql -U postgres -tAc
+      "SELECT pg_create_physical_replication_slot('node3_slot') WHERE NOT EXISTS
+       (SELECT 1 FROM pg_replication_slots WHERE slot_name='node3_slot');"
+  changed_when: false

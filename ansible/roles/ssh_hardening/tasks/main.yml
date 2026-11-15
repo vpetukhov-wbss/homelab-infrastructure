@@ -1,0 +1,20 @@
+---
+# Key-only SSH. Safe: homelab-controller key is confirmed working on all nodes.
+# Does NOT touch Port (node1 keeps 2222). sudo still uses password (unaffected).
+- name: Deploy sshd hardening drop-in
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-homelab-hardening.conf
+    content: |
+      # Managed by Ansible (homelab). Key-only auth.
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+      PubkeyAuthentication yes
+    mode: "0644"
+  become: true
+  notify: restart ssh
+
+- name: Validate sshd config
+  ansible.builtin.command: sshd -t
+  become: true
+  changed_when: false

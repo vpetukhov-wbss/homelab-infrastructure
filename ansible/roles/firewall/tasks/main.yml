@@ -1,0 +1,52 @@
+---
+# ufw: default-deny, allow only SSH + WireGuard + overlay; edge also allows 80/443.
+# CRITICAL: SSH + WG allow rules are added BEFORE enabling ufw, so we never lock out.
+# DB ports are NOT opened here — DB containers bind only to the wg1 overlay IP (see data layer),
+# and Docker's port publishing is bound to 10.44.0.x so nothing lands on 0.0.0.0.
+
+- name: Allow current SSH port
+  community.general.ufw:
+    rule: allow
+    port: "{{ ansible_port | default(22) }}"
+    proto: tcp
+  become: true
+
+- name: Allow WireGuard overlay port
+  community.general.ufw:
+    rule: allow
+    port: "51821"
+    proto: udp
+  become: true
+
+- name: Allow all inbound on wg1 overlay interface
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: wg1
+  become: true
+
+- name: Edge — allow HTTP/HTTPS from anywhere (public ingress)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ["80", "443"]
+  become: true
+  when: "'edge' in group_names"
+
+- name: Default deny incoming
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+  become: true
+
+- name: Default allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+  become: true
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+  become: true

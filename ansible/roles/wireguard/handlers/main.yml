@@ -1,0 +1,6 @@
+---
+- name: restart wg1
+  ansible.builtin.systemd:
+    name: wg-quick@wg1
+    state: restarted
+  become: true
