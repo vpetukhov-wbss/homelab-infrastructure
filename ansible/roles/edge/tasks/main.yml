@@ -1,0 +1,71 @@
+---
+# node1 edge: Caddy (public ingress) + Vault (secrets, TLS, overlay-only) + SFTP-primary.
+- name: Create stack + subdirectories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ stack_dir }}"
+    - "{{ stack_dir }}/vault-tls"
+    - "{{ stack_dir }}/sftp_keys"
+
+# Vault container runs as uid 100 (vault user) → its data dir must be owned by it.
+- name: Create Vault data dir owned by the vault container uid
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/vault-data"
+    state: directory
+    owner: "100"
+    group: "1000"
+    mode: "0700"
+  become: true
+
+- name: Generate self-signed TLS cert for Vault (overlay IP + loopback SAN)
+  ansible.builtin.command:
+    cmd: >
+      openssl req -x509 -newkey rsa:2048 -nodes
+      -keyout {{ stack_dir }}/vault-tls/vault.key
+      -out {{ stack_dir }}/vault-tls/vault.crt
+      -days 3650 -subj "/CN=vault.homelab"
+      -addext "subjectAltName=IP:{{ wg_overlay_ip }},IP:127.0.0.1,DNS:vault.homelab"
+    creates: "{{ stack_dir }}/vault-tls/vault.crt"
+
+- name: Make Vault TLS material container-readable
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0644"
+  loop:
+    - "{{ stack_dir }}/vault-tls/vault.key"
+    - "{{ stack_dir }}/vault-tls/vault.crt"
+
+- name: Install SFTP authorized key (homelab-controller pubkey)
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ssh/homelab-controller.pub"
+    dest: "{{ stack_dir }}/sftp_keys/homelab.pub"
+    mode: "0644"
+
+- name: Template Caddyfile, vault.hcl, compose
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ stack_dir }}/{{ item.dest }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: Caddyfile.j2, dest: Caddyfile, mode: "0644" }
+    - { src: vault.hcl.j2, dest: vault.hcl, mode: "0644" }
+    - { src: docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+
+- name: Deploy the edge stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for Caddy health endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/health"
+    status_code: 200
+  register: caddy_health
+  until: caddy_health.status == 200
+  retries: 15
+  delay: 3

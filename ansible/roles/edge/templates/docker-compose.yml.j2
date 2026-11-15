@@ -1,0 +1,44 @@
+# Managed by Ansible (homelab) — node1 edge stack
+# Caddy is the ONLY public service (80/443). Vault + SFTP bind to the overlay IP only.
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - {{ stack_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  vault:
+    image: hashicorp/vault:1.18
+    container_name: vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    command: ["vault", "server", "-config=/vault/config/vault.hcl"]
+    volumes:
+      - {{ stack_dir }}/vault.hcl:/vault/config/vault.hcl:ro
+      - {{ stack_dir }}/vault-tls:/vault/tls:ro
+      - {{ stack_dir }}/vault-data:/vault/data
+    ports:
+      - "{{ wg_overlay_ip }}:8200:8200"
+
+  sftp:
+    image: atmoz/sftp:alpine
+    container_name: sftp
+    restart: unless-stopped
+    command: ["homelab::1001"]
+    volumes:
+      - {{ stack_dir }}/sftp_keys/homelab.pub:/home/homelab/.ssh/keys/homelab.pub:ro
+      - sftp_data:/home/homelab/upload
+    ports:
+      - "{{ wg_overlay_ip }}:2022:22"
+
+volumes:
+  caddy_data:
+  caddy_config:
+  sftp_data:

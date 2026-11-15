@@ -1,0 +1,9 @@
+---
+# node1 edge: Caddy + Vault + SFTP-primary.
+- name: Edge stack (node1)
+  hosts: edge
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/edge
+  roles:
+    - edge

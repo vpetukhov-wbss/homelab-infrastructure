@@ -1,0 +1,71 @@
+---
+# node3: Postgres STANDBY (streaming from node2) + Redis REPLICA.
+# Bootstraps the standby with pg_basebackup the first time only (idempotent on PG_VERSION).
+- name: Create stack directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Ensure pgdata dir exists, owned by the container postgres uid (999)
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/pgdata"
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: "0700"
+  become: true
+
+- name: Check whether the standby is already seeded
+  ansible.builtin.stat:
+    path: "{{ stack_dir }}/pgdata/PG_VERSION"
+  register: pgdata_seeded
+  become: true
+
+- name: Bootstrap standby with pg_basebackup from the primary (first run only)
+  ansible.builtin.shell:
+    cmd: >
+      docker run --rm --user 999:999
+      -e PGPASSWORD='{{ vault_pg_replicator_password }}'
+      -v {{ stack_dir }}/pgdata:/data
+      postgres:16 bash -lc '
+      pg_basebackup -h {{ hostvars["node2"].wg_overlay_ip }} -p 5432 -U replicator -D /data -Fp -Xs -S node3_slot -w -P &&
+      touch /data/standby.signal &&
+      printf "primary_conninfo = %s\nprimary_slot_name = %s\n"
+      "'"'"'host={{ hostvars["node2"].wg_overlay_ip }} port=5432 user=replicator password={{ vault_pg_replicator_password }} application_name=node3'"'"'"
+      "'"'"'node3_slot'"'"'" >> /data/postgresql.auto.conf
+      '
+  become: true
+  when: not pgdata_seeded.stat.exists
+  no_log: true
+
+- name: Template replica configs (container-readable)
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ stack_dir }}/{{ item | replace('.j2','') }}"
+    mode: "0644"
+  loop:
+    - postgresql.conf.j2
+    - redis.conf.j2
+
+- name: Template docker-compose (host-only, 0640)
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ stack_dir }}/docker-compose.yml"
+    mode: "0640"
+
+- name: Deploy the data-replica stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for the standby to accept read-only connections
+  ansible.builtin.command:
+    cmd: docker exec postgres-replica pg_isready -U postgres
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false

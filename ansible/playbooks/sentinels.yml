@@ -1,0 +1,9 @@
+---
+# Redis Sentinel on all 3 wired nodes (quorum 2 of 3). Requires Redis primary+replica up.
+- name: Redis Sentinels
+  hosts: edge:data_primary:data_replica
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/sentinel
+  roles:
+    - redis_sentinel

@@ -1,0 +1,10 @@
+---
+# node4/laptop: Gitea + Gitea Actions. Local connection, no become (laptop docker is rootless-group).
+- name: Gitea + CI (laptop)
+  hosts: control_ci
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/gitea
+    gitea_lan_ip: "{{ ansible_default_ipv4.address | default('192.168.0.35') }}"
+  roles:
+    - gitea

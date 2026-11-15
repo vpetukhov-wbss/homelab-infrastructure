@@ -1,0 +1,19 @@
+// Managed by Ansible (homelab) — node1 Vault (single-node, integrated Raft storage).
+// TLS enabled with a self-signed cert; Vault listens only on the WireGuard overlay.
+ui            = true
+disable_mlock = true
+
+storage "raft" {
+  path    = "/vault/data"
+  node_id = "node1"
+}
+
+listener "tcp" {
+  address       = "0.0.0.0:8200"
+  tls_cert_file = "/vault/tls/vault.crt"
+  tls_key_file  = "/vault/tls/vault.key"
+  tls_min_version = "tls12"
+}
+
+api_addr     = "https://{{ wg_overlay_ip }}:8200"
+cluster_addr = "https://{{ wg_overlay_ip }}:8201"

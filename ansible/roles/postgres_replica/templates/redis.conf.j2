@@ -1,0 +1,14 @@
+# Managed by Ansible (homelab) — node3 Redis REPLICA of node2 (10.44.0.2)
+bind 0.0.0.0
+protected-mode yes
+port 6379
+requirepass {{ vault_redis_password }}
+masterauth {{ vault_redis_password }}
+
+replicaof {{ hostvars['node2'].wg_overlay_ip }} 6379
+replica-read-only yes
+
+appendonly yes
+appendfsync everysec
+maxmemory 256mb
+maxmemory-policy noeviction

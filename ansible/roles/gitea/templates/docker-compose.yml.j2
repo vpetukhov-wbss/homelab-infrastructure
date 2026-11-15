@@ -1,0 +1,39 @@
+# Managed by Ansible (homelab) — node4/laptop: Gitea (SQLite on SSD) + Actions runner.
+# Gitea SSH uses 2223 to avoid the laptop's own sshd (2345). HTTP on 3000 (LAN-internal).
+services:
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__DOMAIN: "{{ gitea_lan_ip }}"
+      GITEA__server__ROOT_URL: "http://{{ gitea_lan_ip }}:3000/"
+      GITEA__server__SSH_DOMAIN: "{{ gitea_lan_ip }}"
+      GITEA__server__SSH_PORT: "2223"
+      GITEA__actions__ENABLED: "true"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+    volumes:
+      - {{ stack_dir }}/gitea-data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "3000:3000"
+      - "2223:22"
+
+  act_runner:
+    image: gitea/act_runner:latest
+    container_name: act_runner
+    restart: unless-stopped
+    depends_on:
+      - gitea
+    environment:
+      GITEA_INSTANCE_URL: "http://{{ gitea_lan_ip }}:3000"
+    volumes:
+      # /data holds .runner (populated by the one-time register step in the role tasks).
+      - {{ stack_dir }}/runner-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Cap RAM to protect the laptop (it's the interactive box, already memory-pressured).
+    mem_limit: 1200m

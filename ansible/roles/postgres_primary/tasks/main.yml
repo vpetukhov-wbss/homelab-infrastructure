@@ -6,16 +6,24 @@
     state: directory
     mode: "0750"
 
-- name: Template Postgres + Redis configs and compose
+# Config files are read by the container service user (uid 999) → 0644 (they hold no
+# secrets except redis.conf's requirepass, which stays node-local behind the firewall).
+- name: Template Postgres + Redis config files (container-readable)
   ansible.builtin.template:
-    src: "{{ item.src }}"
-    dest: "{{ stack_dir }}/{{ item.dest }}"
-    mode: "0640"
+    src: "{{ item }}"
+    dest: "{{ stack_dir }}/{{ item | replace('.j2','') }}"
+    mode: "0644"
   loop:
-    - { src: postgresql.conf.j2, dest: postgresql.conf }
-    - { src: pg_hba.conf.j2, dest: pg_hba.conf }
-    - { src: redis.conf.j2, dest: redis.conf }
-    - { src: docker-compose.yml.j2, dest: docker-compose.yml }
+    - postgresql.conf.j2
+    - pg_hba.conf.j2
+    - redis.conf.j2
+
+# Compose holds the DB passwords (env) and is read by the host docker CLI → 0640.
+- name: Template docker-compose (host-only, 0640)
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ stack_dir }}/docker-compose.yml"
+    mode: "0640"
 
 - name: Deploy the data-primary stack
   ansible.builtin.command:
@@ -56,3 +64,11 @@
       "SELECT pg_create_physical_replication_slot('node3_slot') WHERE NOT EXISTS
        (SELECT 1 FROM pg_replication_slots WHERE slot_name='node3_slot');"
   changed_when: false
+
+- name: Ensure the homelab application database exists
+  ansible.builtin.shell: >
+    docker exec postgres-primary psql -U postgres -tAc
+    "SELECT 1 FROM pg_database WHERE datname='homelab'" | grep -q 1 ||
+    docker exec postgres-primary psql -U postgres -c "CREATE DATABASE homelab;"
+  register: db_create
+  changed_when: "'CREATE DATABASE' in db_create.stdout"

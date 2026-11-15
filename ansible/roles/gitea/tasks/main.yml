@@ -1,0 +1,66 @@
+---
+# node4/laptop: Gitea + Gitea Actions runner. Local docker (no sudo/become on the laptop).
+- name: Create stack + data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ stack_dir }}"
+    - "{{ stack_dir }}/gitea-data"
+    - "{{ stack_dir }}/runner-data"
+
+- name: Template Gitea + runner compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ stack_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Gitea (first, so a runner token can be generated)
+  ansible.builtin.command:
+    cmd: docker compose up -d gitea
+    chdir: "{{ stack_dir }}"
+  register: gitea_up
+  changed_when: "'Started' in gitea_up.stderr or 'Created' in gitea_up.stderr"
+
+- name: Wait for Gitea HTTP to come up
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/healthz"
+    status_code: 200
+  register: gitea_health
+  until: gitea_health.status == 200
+  retries: 30
+  delay: 5
+
+- name: Check whether the runner is already registered
+  ansible.builtin.stat:
+    path: "{{ stack_dir }}/runner-data/.runner"
+  register: runner_registered
+
+- name: Generate a runner registration token (Gitea CLI)
+  ansible.builtin.command:
+    cmd: docker exec gitea gitea --work-path /data actions generate-runner-token
+  register: runner_token
+  changed_when: false
+  when: not runner_registered.stat.exists
+
+- name: Register the act_runner (one-time)
+  ansible.builtin.command:
+    cmd: >
+      docker run --rm
+      -v {{ stack_dir }}/runner-data:/data
+      gitea/act_runner:latest
+      register --no-interactive
+      --instance http://{{ gitea_lan_ip }}:3000
+      --token {{ runner_token.stdout | trim }}
+      --name laptop-runner
+      --labels ubuntu-latest:docker://node:20-bookworm,homelab:host
+  when: not runner_registered.stat.exists
+  no_log: true
+
+- name: Start the act_runner
+  ansible.builtin.command:
+    cmd: docker compose up -d act_runner
+    chdir: "{{ stack_dir }}"
+  register: runner_up
+  changed_when: "'Started' in runner_up.stderr or 'Created' in runner_up.stderr"

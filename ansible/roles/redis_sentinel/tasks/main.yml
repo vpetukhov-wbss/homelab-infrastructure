@@ -1,0 +1,30 @@
+---
+# Redis Sentinel (quorum 2 of 3) on each wired node, for automatic Redis failover.
+- name: Create sentinel stack directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+
+# Sentinel rewrites its own config at runtime → must be writable by the container (uid 999).
+- name: Template sentinel.conf (container-writable)
+  ansible.builtin.template:
+    src: sentinel.conf.j2
+    dest: "{{ stack_dir }}/sentinel.conf"
+    owner: "999"
+    group: "999"
+    mode: "0644"
+  become: true
+
+- name: Template sentinel docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ stack_dir }}/docker-compose.yml"
+    mode: "0640"
+
+- name: Deploy the sentinel
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"

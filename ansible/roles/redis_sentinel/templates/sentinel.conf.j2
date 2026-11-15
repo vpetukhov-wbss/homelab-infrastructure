@@ -1,0 +1,13 @@
+# Managed by Ansible (homelab) — Redis Sentinel on {{ inventory_hostname }}
+# Sentinel rewrites this file with runtime state, so the container must be able to write it.
+port 26379
+bind 0.0.0.0
+sentinel resolve-hostnames yes
+sentinel announce-ip {{ wg_overlay_ip }}
+sentinel announce-port 26379
+
+sentinel monitor homelab-redis {{ hostvars['node2'].wg_overlay_ip }} 6379 2
+sentinel auth-pass homelab-redis {{ vault_redis_password }}
+sentinel down-after-milliseconds homelab-redis 5000
+sentinel failover-timeout homelab-redis 15000
+sentinel parallel-syncs homelab-redis 1

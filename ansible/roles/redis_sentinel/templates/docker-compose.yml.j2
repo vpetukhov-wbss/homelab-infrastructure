@@ -1,0 +1,11 @@
+# Managed by Ansible (homelab) — Redis Sentinel on {{ inventory_hostname }}
+services:
+  redis-sentinel:
+    image: redis:7-alpine
+    container_name: redis-sentinel
+    restart: unless-stopped
+    command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
+    volumes:
+      - {{ stack_dir }}/sentinel.conf:/etc/redis/sentinel.conf
+    ports:
+      - "{{ wg_overlay_ip }}:26379:26379"
