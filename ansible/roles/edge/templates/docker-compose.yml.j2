@@ -34,11 +34,10 @@ services:
     command: ["homelab::1001"]
     volumes:
       - {{ stack_dir }}/sftp_keys/homelab.pub:/home/homelab/.ssh/keys/homelab.pub:ro
-      - sftp_data:/home/homelab/upload
+      - {{ sftp_data_dir }}:/home/homelab/upload
     ports:
       - "{{ wg_overlay_ip }}:2022:22"
 
 volumes:
   caddy_data:
   caddy_config:
-  sftp_data:

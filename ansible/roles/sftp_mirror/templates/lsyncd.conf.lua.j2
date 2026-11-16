@@ -1,0 +1,37 @@
+-- Managed by Ansible (homelab) — SFTP mirror {{ inventory_hostname }} -> {{ mirror_target_host }}
+-- One-way: node1 is authoritative, node3 holds a warm copy over the WireGuard overlay.
+settings {
+  logfile        = "{{ mirror_log_dir }}/lsyncd.log",
+  statusFile     = "{{ mirror_log_dir }}/lsyncd.status",
+  statusInterval = 20,
+  -- Keep running (and retry) when the target is down instead of exiting at startup.
+  insist         = true,
+}
+
+sync {
+  default.rsyncssh,
+  source    = "{{ sftp_data_dir }}",
+  host      = "{{ mirror_target_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }}",
+  targetdir = "{{ mirror_target_dir }}",
+  delay     = {{ mirror_delay }},
+  -- "running" propagates deletes that happen while lsyncd watches, but never does a
+  -- bulk delete on startup — so a momentarily-empty source cannot wipe the mirror.
+  delete    = "running",
+  rsync = {
+    archive  = true,
+    -- The overlay is wired gigabit; these boxes are 2-core, so spend bandwidth not CPU.
+    compress = false,
+    perms    = true,
+    times    = true,
+    -- rsync runs as an unprivileged user on the target and cannot chown, so ownership
+    -- is deliberately not mirrored: files land as {{ mirror_target_user }}. On promotion,
+    -- chown -R 1001:1001 {{ mirror_target_dir }} to match the sftp container's uid.
+    owner    = false,
+    group    = false,
+  },
+  ssh = {
+    port         = {{ mirror_target_ssh_port }},
+    identityFile = "{{ mirror_key_path }}",
+    _extra       = { "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new" },
+  },
+}

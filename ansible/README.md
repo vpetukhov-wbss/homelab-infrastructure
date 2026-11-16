@@ -42,11 +42,30 @@ A full site playbook will eventually allow a new node to progress from bootstrap
 | `firewall` | ufw default-deny; allows only SSH + wg port + wg1 interface; edge also 80/443 | all 3 ThinkCentres |
 | `ssh_hardening` | key-only SSH (PasswordAuthentication no), no root login | all 3 ThinkCentres |
 | `postgres_primary` | Postgres 16 primary (HDD-tuned) + Redis 7 primary; overlay-only bind | node2 |
+| `postgres_replica` | Postgres 16 streaming standby (pg_basebackup bootstrap, async) + Redis replica | node3 |
+| `redis_sentinel` | Redis Sentinel, quorum 2 of 3, monitoring `homelab-redis` | node1/node2/node3 |
+| `edge` | Caddy (the only public service) + Vault 1.18 (overlay-only, TLS) + SFTP-primary | node1 |
+| `sftp_mirror` | lsyncd one-way mirror of the SFTP tree to the replica, over the overlay | node1 → node3 |
+| `gitea` | Gitea + act_runner on the laptop's SSD, RAM-capped | node4/laptop |
 
-Playbooks: `base.yml`, `overlay.yml`, `security.yml`, `data-primary.yml`.
+Playbooks, in dependency order: `base.yml`, `overlay.yml`, `security.yml`,
+`data-primary.yml`, `data-replica.yml`, `sentinels.yml`, `edge.yml`,
+`sftp-mirror.yml`, `gitea.yml`.
 Run from `ansible/` with the venv's `ansible-playbook`; real inventory lives in the
 git-ignored `inventory/hosts.yml`, secrets in the git-ignored ansible-vault files
 under `inventory/group_vars/`.
+
+### Operational notes
+
+- **`sftp-mirror.yml` must run after `edge.yml`.** The mirror watches the host-side bind
+  mount that the edge role gives the sftp container; it generates a dedicated ed25519
+  key on node1 and authorizes it on node3 restricted to node1's overlay IP.
+- **The mirror does not preserve ownership** (rsync runs unprivileged on the target).
+  Promoting the mirror to primary needs `chown -R 1001:1001` on the target directory.
+- **`lsyncd` deletes with `delete = "running"`** — deletions are propagated while it
+  watches, but it never bulk-deletes at startup, so an empty source cannot wipe the mirror.
+- **Back up `/etc/wireguard/` off-box.** Private keys live only on the nodes otherwise;
+  they must never be committed to this public repo.
 
 ## Realistic-architecture decisions (hardware-constrained)
 

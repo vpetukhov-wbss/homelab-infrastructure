@@ -1,0 +1,120 @@
+---
+# node1 -> node3 SFTP mirror with lsyncd (inotify + rsync over SSH on the wg1 overlay).
+# node1 stays authoritative; node3 keeps a warm copy on the biggest disk in the fleet.
+#
+# Trust model: this installs a DEDICATED keypair, generated on node1 and used only by
+# lsyncd. The public half is restricted in node3's authorized_keys to connections from
+# node1's overlay IP with no pty/forwarding. Optional further hardening (not done here,
+# to avoid depending on rrsync's path differing across 22.04/24.04): wrap it in a
+# command="…/rrsync -ro {{ mirror_target_dir }}" forced command.
+
+- name: Install lsyncd and rsync
+  ansible.builtin.apt:
+    name:
+      - lsyncd
+      - rsync
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Ensure rsync is present on the mirror target
+  ansible.builtin.apt:
+    name: rsync
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  delegate_to: "{{ mirror_target_host }}"
+
+- name: Ensure the lsyncd config and log directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - /etc/lsyncd
+    - "{{ mirror_log_dir }}"
+  become: true
+
+# uid/gid 1001 is the sftp container's "homelab" user (see the edge role's compose).
+- name: Ensure the SFTP source directory exists, owned by the sftp container uid
+  ansible.builtin.file:
+    path: "{{ sftp_data_dir }}"
+    state: directory
+    owner: "1001"
+    group: "1001"
+    mode: "0755"
+  become: true
+
+- name: Create the mirror target directory on the replica
+  ansible.builtin.file:
+    path: "{{ mirror_target_dir }}"
+    state: directory
+    owner: "{{ mirror_target_user }}"
+    group: "{{ mirror_target_user }}"
+    mode: "0750"
+  become: true
+  delegate_to: "{{ mirror_target_host }}"
+
+- name: Generate the dedicated lsyncd SSH key (once)
+  community.crypto.openssh_keypair:
+    path: "{{ mirror_key_path }}"
+    type: ed25519
+    comment: "lsyncd sftp-mirror {{ inventory_hostname }}->{{ mirror_target_host }}"
+    mode: "0600"
+  become: true
+  register: mirror_key
+
+- name: Authorize the lsyncd key on the replica (restricted to node1's overlay IP)
+  ansible.posix.authorized_key:
+    user: "{{ mirror_target_user }}"
+    key: "{{ mirror_key.public_key }}"
+    key_options: >-
+      from="{{ wg_overlay_ip }}",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding
+    state: present
+  delegate_to: "{{ mirror_target_host }}"
+
+- name: Template the lsyncd configuration
+  ansible.builtin.template:
+    src: lsyncd.conf.lua.j2
+    dest: /etc/lsyncd/lsyncd.conf.lua
+    mode: "0640"
+  become: true
+  notify: restart lsyncd
+
+- name: Enable and start lsyncd
+  ansible.builtin.systemd:
+    name: lsyncd
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+- name: Flush handlers so the verification below tests the current config
+  ansible.builtin.meta: flush_handlers
+
+# --- verification -------------------------------------------------------------
+- name: Drop a canary file into the SFTP tree
+  ansible.builtin.copy:
+    content: "lsyncd mirror canary {{ ansible_date_time.iso8601 }}\n"
+    dest: "{{ sftp_data_dir }}/.mirror-canary"
+    owner: "1001"
+    group: "1001"
+    mode: "0644"
+  become: true
+
+- name: Wait for the canary to land on the replica
+  ansible.builtin.stat:
+    path: "{{ mirror_target_dir }}/.mirror-canary"
+  register: canary
+  until: canary.stat.exists
+  retries: 12
+  delay: 5
+  delegate_to: "{{ mirror_target_host }}"
+
+- name: Report mirror status
+  ansible.builtin.debug:
+    msg: >-
+      SFTP mirror live: {{ sftp_data_dir }} on {{ inventory_hostname }}
+      -> {{ mirror_target_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }}:{{ mirror_target_dir }}

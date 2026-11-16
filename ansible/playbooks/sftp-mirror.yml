@@ -1,0 +1,10 @@
+---
+# node1 -> node3 SFTP mirror (lsyncd over the wg1 overlay).
+# Run AFTER edge.yml, so the bind-mounted SFTP tree already exists on node1.
+- name: SFTP mirror (node1 -> node3)
+  hosts: edge
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/edge
+  roles:
+    - sftp_mirror

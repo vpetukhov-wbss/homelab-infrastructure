@@ -1,0 +1,14 @@
+---
+# SFTP mirror (node1 primary -> node3 standby) tunables.
+# sftp_data_dir must match the bind mount the edge role gives the sftp container.
+sftp_data_dir: /home/vpetukhov/stacks/edge/sftp_data
+
+mirror_target_host: node3-data
+mirror_target_dir: /home/vpetukhov/stacks/sftp-mirror/data
+mirror_target_user: vpetukhov
+mirror_target_ssh_port: 22
+
+mirror_key_path: /etc/lsyncd/id_sftp_mirror
+mirror_log_dir: /var/log/lsyncd
+# Seconds lsyncd batches filesystem events before firing rsync.
+mirror_delay: 5

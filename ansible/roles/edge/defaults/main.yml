@@ -1,0 +1,5 @@
+---
+# Host path bind-mounted into the sftp container as /home/homelab/upload.
+# A bind mount (rather than a named volume) is what lets lsyncd on this node
+# watch the tree directly — see the sftp_mirror role.
+sftp_data_dir: "{{ stack_dir }}/sftp_data"
