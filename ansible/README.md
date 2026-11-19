@@ -40,12 +40,12 @@ A full site playbook will eventually allow a new node to progress from bootstrap
 | `base_packages` | wireguard, ufw, rsync, lsyncd, chrony; enables IPv4 forwarding | all 3 ThinkCentres |
 | `wireguard` | wg1 overlay mesh (10.44.0.0/24), full mesh, keys generated per node | node1/node2/node3 |
 | `firewall` | ufw default-deny; allows only SSH + wg port + wg1 interface; edge also 80/443 | all 3 ThinkCentres |
-| `ssh_hardening` | key-only SSH (PasswordAuthentication no), no root login | all 3 ThinkCentres |
+| `ssh_hardening` | key-only SSH, no root login; drop-in named `00-` so it beats `50-cloud-init.conf`, and asserts the effective `sshd -T` output | all 3 ThinkCentres |
 | `postgres_primary` | Postgres 16 primary (HDD-tuned) + Redis 7 primary; overlay-only bind | node2 |
 | `postgres_replica` | Postgres 16 streaming standby (pg_basebackup bootstrap, async) + Redis replica | node3 |
 | `redis_sentinel` | Redis Sentinel, quorum 2 of 3, monitoring `homelab-redis` | node1/node2/node3 |
 | `edge` | Caddy (the only public service) + Vault 1.18 (overlay-only, TLS) + SFTP-primary | node1 |
-| `sftp_mirror` | lsyncd one-way mirror of the SFTP tree to the replica, over the overlay | node1 → node3 |
+| `sftp_mirror` | lsyncd one-way mirror of the SFTP tree to the standby, over the overlay; seeds root's `known_hosts` first | node1 → node3 |
 | `gitea` | Gitea + act_runner on the laptop's SSD, RAM-capped | node4/laptop |
 
 Playbooks, in dependency order: `base.yml`, `overlay.yml`, `security.yml`,
@@ -66,6 +66,15 @@ under `inventory/group_vars/`.
   watches, but it never bulk-deletes at startup, so an empty source cannot wipe the mirror.
 - **Back up `/etc/wireguard/` off-box.** Private keys live only on the nodes otherwise;
   they must never be committed to this public repo.
+- **`sshd -t` is not a verification.** It checks syntax and cannot detect a directive
+  overridden by an earlier drop-in — which is exactly how password authentication
+  stayed enabled on two nodes. `ssh_hardening` now asserts against `sshd -T`.
+- **lsyncd runs as root** and the ssh options it passes to rsync do not reliably carry
+  `StrictHostKeyChecking`. Without a pre-seeded `/root/.ssh/known_hosts` every sync
+  fails with `Host key verification failed` while the playbook still reports success —
+  check `/var/log/lsyncd/lsyncd.log`, not just the play recap.
+- **Run ansible from this `ansible/` directory.** `ansible.cfg` points at
+  `../inventory/hosts.yml`; from anywhere else no inventory is found.
 
 ## Realistic-architecture decisions (hardware-constrained)
 

@@ -1,11 +1,10 @@
 # HomeLab Infrastructure
 
-![Ubuntu](https://img.shields.io/badge/Ubuntu%20Server-24.04%20LTS-E95420?logo=ubuntu&logoColor=white)
+![Ubuntu](https://img.shields.io/badge/Ubuntu%20Server-22.04%20LTS-E95420?logo=ubuntu&logoColor=white)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform-844FBA?logo=terraform&logoColor=white)
 ![Ansible](https://img.shields.io/badge/Configuration-Ansible-EE0000?logo=ansible&logoColor=white)
 ![Docker](https://img.shields.io/badge/Runtime-Docker-2496ED?logo=docker&logoColor=white)
 ![WireGuard](https://img.shields.io/badge/Overlay-WireGuard-88171A?logo=wireguard&logoColor=white)
-![Jenkins](https://img.shields.io/badge/CI%2FCD-Jenkins-D24939?logo=jenkins&logoColor=white)
 ![Gitea](https://img.shields.io/badge/SCM-Gitea-609926?logo=gitea&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
@@ -28,14 +27,14 @@ The lab is intended to behave like a small production platform rather than a col
 Core design goals:
 
 - Rebuildable bare-metal nodes.
-- Ubuntu Server 24.04 LTS everywhere.
+- A single Ubuntu Server baseline (currently 22.04 LTS on all three nodes).
 - Infrastructure as Code.
 - Role-based configuration rather than machine-specific snowflakes.
 - Encrypted node-to-node communication through WireGuard.
 - A dedicated edge/gateway security boundary.
 - Database replication and explicit failover procedures.
 - Centralized secrets management with HashiCorp Vault.
-- Self-hosted CI/CD with Jenkins.
+- Self-hosted CI/CD with Gitea Actions (Jenkins was cut — it did not fit in 3.7 GB per node).
 - Self-hosted source control with Gitea.
 - Public GitHub repository as upstream documentation and portfolio.
 - Automated backups with tested recovery procedures.
@@ -46,7 +45,13 @@ Core design goals:
 
 ## Platform architecture
 
-Physical hardware assignments are deliberately not finalized yet. Exact CPU, RAM, disk, and NIC data will be added to the inventory before production deployment.
+> **This section describes the original target architecture, not what is deployed.**
+> The lab was scoped down to the four machines that actually exist; MongoDB, SQL
+> Server, RabbitMQ, Jenkins and the dedicated DevOps node were cut to fit 2-core /
+> 3.7 GB nodes. For the deployed topology, role-to-host mapping and verified state,
+> see **[docs/architecture/overview.md](docs/architecture/overview.md)**; for the
+> verified security controls and open gaps, see
+> **[docs/security/posture.md](docs/security/posture.md)**.
 
 ~~~mermaid
 flowchart TB
@@ -135,9 +140,13 @@ Database and management ports must never be intentionally exposed directly to th
 
 ## Technology stack
 
+> **Target stack.** Several entries below are not deployed — notably Jenkins,
+> MongoDB and SQL Server, which were cut. See
+> [docs/architecture/overview.md](docs/architecture/overview.md) for what actually runs.
+
 ### Bare metal and operating system
 
-- Ubuntu Server 24.04 LTS
+- Ubuntu Server 22.04 LTS (deployed on all three nodes; 24.04 is the eventual target)
 - Ubuntu Autoinstall / cloud-init
 - SSH keys only
 - unattended security updates
@@ -214,6 +223,9 @@ The wrapper will eventually coordinate Terraform and Ansible while keeping each 
 ---
 
 ## CI/CD model
+
+> **Not deployed.** This describes the intended pipeline. Jenkins was cut; CI/CD is
+> planned on Gitea Actions, and neither Gitea nor its runner is running yet.
 
 ~~~mermaid
 flowchart LR
@@ -384,28 +396,35 @@ Every stateful service will have both a replication design and a documented rest
 
 ## Current project status
 
-**Phase: Foundation / architecture**
+**Phase: data platform and edge deployed; secrets and CI/CD outstanding.**
+Verified against the running systems on 2026-11-19 — see
+[docs/architecture/overview.md](docs/architecture/overview.md) for detail.
 
-Completed:
+Deployed and verified:
 
-- public repository created
-- MIT license
-- initial architecture defined
-- Terraform + Ansible + Jenkins responsibility split defined
-- Gitea selected for self-hosted source control
-- generic Ubuntu Autoinstall strategy defined
-- WireGuard-first private network model defined
-- public-repository secrets policy defined
+- Four machines inventoried: three ThinkCentres (2-core, ~3.7 GB RAM, HDD) and a laptop.
+- WireGuard `wg1` overlay, `10.44.0.0/24`, full mesh across the three wired nodes.
+- PostgreSQL 16 primary with an asynchronous streaming standby, held by a replication
+  slot. Verified end to end: writes replicate, the standby refuses writes.
+- Redis 7 with a replica and three Sentinels at quorum 2. Automatic failover and
+  automatic demotion of a returning master were both exercised under a real outage.
+- Edge on node1: Caddy serving `:80`, SFTP, and Vault 1.18 (running but uninitialised).
+- SFTP mirror node1 → node3 over the overlay via lsyncd, verified including deletions.
+- `ufw` default-deny and key-only SSH on all four machines, verified against the
+  effective `sshd -T` configuration rather than the intended one.
+- No database port bound to `0.0.0.0` anywhere; all bind the overlay address.
 
-Pending before hardware-specific implementation:
+Outstanding:
 
-- exact machine inventory
-- CPU/RAM/storage/NIC mapping
-- final physical node placement
-- real LAN addressing
-- storage capacity and backup retention targets
-- UPS/power strategy
-- final SQL Server edition/licensing decision
+- Vault `operator init` — Vault holds no secrets and is not yet an operational dependency.
+- Gitea and Gitea Actions on the laptop (role written, not deployed).
+- Laptop not yet on the WireGuard overlay.
+- No public ingress: no router forward to the edge, and no TLS site on `:443`.
+- Monitoring, metrics and backups beyond the SFTP mirror.
+- Open security gaps are tracked in [docs/security/posture.md](docs/security/posture.md).
+
+Explicitly cut from the original plan: MongoDB, Microsoft SQL Server, RabbitMQ,
+Jenkins, and the dedicated DevOps node.
 
 ---
 
