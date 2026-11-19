@@ -3,9 +3,9 @@
 # sftp_data_dir must match the bind mount the edge role gives the sftp container.
 sftp_data_dir: /home/vpetukhov/stacks/edge/sftp_data
 
-# Mirror target = the node that is NOT holding the SFTP primary. The edge role moved
-# from node1 to node3 (node1 unreachable, 2026-11-17), so the mirror now runs node3 -> node2.
-mirror_target_host: node2
+# Mirror target = the node that is NOT holding the SFTP primary. Edge (and the SFTP
+# primary) lives on node1; node3 holds the standby copy on the fleet's biggest disk.
+mirror_target_host: node3-data
 mirror_target_dir: /home/vpetukhov/stacks/sftp-mirror/data
 mirror_target_user: vpetukhov
 mirror_target_ssh_port: 22

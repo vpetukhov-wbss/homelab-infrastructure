@@ -75,6 +75,27 @@
     state: present
   delegate_to: "{{ mirror_target_host }}"
 
+# lsyncd runs as root, and the ssh options it hands to rsync do not reliably carry
+# StrictHostKeyChecking through. If root does not already trust the target's host key,
+# every sync dies with "Host key verification failed" — so seed it explicitly.
+- name: Seed root's known_hosts with the mirror target host key
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      mkdir -p /root/.ssh && chmod 700 /root/.ssh
+      touch /root/.ssh/known_hosts && chmod 600 /root/.ssh/known_hosts
+      TARGET={{ hostvars[mirror_target_host].wg_overlay_ip }}
+      if ssh-keygen -F "$TARGET" -f /root/.ssh/known_hosts >/dev/null 2>&1; then
+        echo "already trusted"
+      else
+        ssh-keyscan -t ed25519,rsa -p {{ mirror_target_ssh_port }} "$TARGET" >> /root/.ssh/known_hosts
+        echo "seeded"
+      fi
+    executable: /bin/bash
+  register: mirror_known_hosts
+  changed_when: "'seeded' in mirror_known_hosts.stdout"
+  become: true
+
 - name: Template the lsyncd configuration
   ansible.builtin.template:
     src: lsyncd.conf.lua.j2
