@@ -1,11 +1,20 @@
 ---
-# Key-only SSH. Safe: homelab-controller key is confirmed working on all nodes.
-# Does NOT touch Port (node1 keeps 2222). sudo still uses password (unaffected).
-- name: Deploy sshd hardening drop-in
+# Key-only SSH. Safe: the homelab-controller key is confirmed working on all nodes.
+# Does NOT touch Port (node1 keeps 2222). sudo still uses a password (unaffected).
+#
+# CRITICAL ORDERING NOTE: sshd takes the FIRST value it obtains for a keyword, and
+# `Include /etc/ssh/sshd_config.d/*.conf` expands the glob alphabetically. Ubuntu
+# cloud images ship `50-cloud-init.conf` containing `PasswordAuthentication yes`,
+# which therefore BEATS any drop-in named `99-*`. The hardening file must sort
+# first, hence the `00-` prefix. This silently left node1 and node2 accepting
+# password logins until an effective-config check caught it on 2026-11-19.
+
+- name: Deploy sshd hardening drop-in (00- so it wins over 50-cloud-init.conf)
   ansible.builtin.copy:
-    dest: /etc/ssh/sshd_config.d/99-homelab-hardening.conf
+    dest: /etc/ssh/sshd_config.d/00-homelab-hardening.conf
     content: |
       # Managed by Ansible (homelab). Key-only auth.
+      # Must sort before 50-cloud-init.conf: sshd honours the first value it reads.
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PermitRootLogin no
@@ -14,7 +23,38 @@
   become: true
   notify: restart ssh
 
-- name: Validate sshd config
+- name: Remove the superseded 99- drop-in
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/99-homelab-hardening.conf
+    state: absent
+  become: true
+  notify: restart ssh
+
+- name: Validate sshd config syntax
   ansible.builtin.command: sshd -t
   become: true
   changed_when: false
+
+- name: Apply pending reload before the effective-config check
+  ansible.builtin.meta: flush_handlers
+
+# Syntax validation alone does NOT catch an overridden directive, which is exactly
+# how the cloud-init override went unnoticed. Assert what sshd will actually enforce.
+- name: Read the EFFECTIVE sshd configuration
+  ansible.builtin.command: sshd -T
+  become: true
+  register: sshd_effective
+  changed_when: false
+
+- name: Assert password and root logins are genuinely disabled
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in sshd_effective.stdout"
+      - "'kbdinteractiveauthentication no' in sshd_effective.stdout"
+      - "'permitrootlogin no' in sshd_effective.stdout"
+      - "'pubkeyauthentication yes' in sshd_effective.stdout"
+    fail_msg: >-
+      sshd is NOT key-only on {{ inventory_hostname }}. Another drop-in in
+      /etc/ssh/sshd_config.d/ probably sorts earlier and wins — check for
+      50-cloud-init.conf.
+    success_msg: "sshd is key-only on {{ inventory_hostname }} (verified against sshd -T)"
