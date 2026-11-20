@@ -47,10 +47,17 @@ A full site playbook will eventually allow a new node to progress from bootstrap
 | `edge` | Caddy (the only public service) + Vault 1.18 (overlay-only, TLS) + SFTP-primary | node1 |
 | `sftp_mirror` | lsyncd one-way mirror of the SFTP tree to the standby, over the overlay; seeds root's `known_hosts` first | node1 → node3 |
 | `gitea` | Gitea + act_runner on the laptop's SSD, RAM-capped | node4/laptop |
+| `rabbitmq` | RabbitMQ 3.13 + management UI, overlay-only, absolute memory cap | node1 |
+| `app_host` | nginx + SQLite for applications, overlay-only, behind the edge | node3 |
+| `backup` | nightly encrypted logical backups on a systemd timer, restore-verified | node1 |
+| `fail2ban` | sshd jail, bans via ufw, LAN and overlays exempt | all 3 ThinkCentres |
 
 Playbooks, in dependency order: `base.yml`, `overlay.yml`, `security.yml`,
-`data-primary.yml`, `data-replica.yml`, `sentinels.yml`, `edge.yml`,
-`sftp-mirror.yml`, `gitea.yml`.
+`fail2ban.yml`, `data-primary.yml`, `data-replica.yml`, `sentinels.yml`, `edge.yml`,
+`sftp-mirror.yml`, `app-host.yml`, `rabbitmq.yml`, `backup.yml`, `gitea.yml`.
+
+`backup.yml` must run after `app-host.yml` and `rabbitmq.yml`, since it snapshots
+what they create.
 Run from `ansible/` with the venv's `ansible-playbook`; real inventory lives in the
 git-ignored `inventory/hosts.yml`, secrets in the git-ignored ansible-vault files
 under `inventory/group_vars/`.
@@ -75,6 +82,15 @@ under `inventory/group_vars/`.
   check `/var/log/lsyncd/lsyncd.log`, not just the play recap.
 - **Run ansible from this `ansible/` directory.** `ansible.cfg` points at
   `../inventory/hosts.yml`; from anywhere else no inventory is found.
+- **A Caddyfile edit alone does nothing.** `admin off` disables the admin API so
+  `caddy reload` cannot work, and `docker compose up -d` will not recreate a
+  container when only a bind-mounted file changed. The `edge` role restarts Caddy
+  from a handler; anything else editing that file must do the same.
+- **Never let an application publish on `0.0.0.0`.** Docker's port rules are
+  evaluated before ufw's INPUT chain, so ufw will not save you — the bind address in
+  the compose file is the control. The `app_host` and `rabbitmq` roles assert this.
+- **Fail2Ban's `ignoreip` is load-bearing.** It must always include the LAN and both
+  overlays, or a ban can cut off the Ansible controller or a peer node.
 
 ## Realistic-architecture decisions (hardware-constrained)
 

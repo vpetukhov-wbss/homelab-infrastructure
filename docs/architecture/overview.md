@@ -23,9 +23,9 @@ Two constraints shape every decision here, and both are hardware-imposed:
 
 | Host | LAN | Overlay | OS | Role |
 |---|---|---|---|---|
-| `node1-gateway` | 192.168.0.101 (also .23) | 10.44.0.1 | Ubuntu 22.04.5 | Edge: Caddy, Vault, SFTP primary, Sentinel |
+| `node1-gateway` | 192.168.0.101 (also .23) | 10.44.0.1 | Ubuntu 22.04.5 | Edge: Caddy, Vault, SFTP primary, Sentinel, RabbitMQ, backup job |
 | `node2-data-replica` | 192.168.0.28 | 10.44.0.2 | Ubuntu 24.04 | PostgreSQL **primary**, Redis, Sentinel |
-| `node3-data` | 192.168.0.103 | 10.44.0.3 | Ubuntu 22.04.5 | PostgreSQL standby, Redis, SFTP mirror, Sentinel |
+| `node3-data` | 192.168.0.103 | 10.44.0.3 | Ubuntu 22.04.5 | PostgreSQL standby, Redis, SFTP mirror, Sentinel, **app host** (nginx + SQLite) |
 | laptop (`node4`) | 192.168.0.35 | *(not on overlay)* | — | Ansible controller |
 
 **Host and container names do not reliably indicate current role.** After a Redis
@@ -110,6 +110,73 @@ promoting the mirror requires `chown -R 1001:1001` on the target directory.
 
 This is a mirror, not a backup: it faithfully replicates deletions and corruption.
 
+## Application hosting
+
+Applications run on **node3**, behind nginx bound to the overlay address only. The
+only path in is Caddy on the edge:
+
+~~~
+Internet → router → node1:80/443 (Caddy, the only public listener)
+                       ↓ overlay
+                    node3:8080 (nginx) → application containers
+~~~
+
+node3 was chosen by elimination. node1 terminates public traffic and holds Vault,
+which makes it the worst possible neighbour for application code — a compromised app
+there would already be inside the security boundary. node2 is the PostgreSQL write
+primary, and the single spinning disk is already the platform's ceiling. node3 has
+the largest disk and a read-mostly workload.
+
+Vhosts go in `stacks/apphost/sites/`, static files in `stacks/apphost/www/`.
+Application containers join the shared `apphost` Docker network and are reachable by
+name from nginx. **Applications must never publish on `0.0.0.0`** — Docker writes its
+port rules ahead of ufw's INPUT chain, so the bind address, not the firewall, is what
+keeps them off the LAN. The role asserts this for nginx itself.
+
+### SQLite
+
+SQLite databases live in `stacks/apphost/sqlite/`. They are backed up with
+`sqlite3 .backup` rather than a file copy: copying a database while it is being
+written captures a torn page, whereas the backup API is consistent under concurrent
+writes.
+
+## Messaging
+
+RabbitMQ 3.13 runs on **node1**, with AMQP on `10.44.0.1:5672` and the management UI
+on `:15672` — both overlay-only. It sits on the edge node precisely because it is the
+one node whose disk is comparatively idle; a broker with persistent queues competing
+with PostgreSQL for the same spindle would be the worst placement available.
+
+Its memory high-watermark is set as an **absolute** value rather than a fraction, so
+its appetite cannot grow if a node is ever given more RAM, and a disk-free limit
+blocks publishers before a filling disk takes PostgreSQL down with it.
+
+## Backups
+
+Nightly, on a systemd timer, stored on **node1** — a third machine, so losing either
+data node does not take the backups with it.
+
+The job covers `pg_dump` of the PostgreSQL primary, a Redis RDB snapshot, RabbitMQ
+definitions and every SQLite database on the app host. Archives are **AES-256
+encrypted at rest**, because none of these disks are encrypted and the hardware is
+second-hand. Retention is 21 archives.
+
+Two properties matter more than the schedule:
+
+- **Roles are discovered at runtime, never assumed.** Sentinel moves the Redis master
+  and a promotion moves the PostgreSQL primary, so a hardcoded host would silently
+  start dumping a read-only standby. The first run found the Redis master on node3,
+  where the 2026-11-18 failover had left it.
+- **Every run verifies its own archive** by decrypting and listing it, and deletes it
+  on failure. An unverified backup is a guess.
+
+Restore has been drilled end to end: a seeded row was dumped, encrypted, decrypted,
+restored into a throwaway database and read back; the SQLite canary likewise came back
+with `integrity_check ok`.
+
+Note that neither the PostgreSQL standby nor the SFTP mirror is a backup — both
+propagate `DROP TABLE` and corruption within milliseconds. Only these archives do.
+
 ## Failover: PostgreSQL is manual, Redis is automatic
 
 | | PostgreSQL | Redis |
@@ -146,7 +213,7 @@ overlay. It is **deployed but not initialised** — see [Planned](#planned-not-d
   Caddyfile sets `auto_https off` and defines only a `:80` block.
 - **Public ingress.** No router port-forward to node1 exists, so `:80`/`:443` are
   reachable on the LAN only.
-- **Monitoring, metrics and backups** beyond the SFTP mirror.
+- **Monitoring and metrics.**
 
 ## Explicitly cut
 

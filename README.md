@@ -412,7 +412,13 @@ Deployed and verified:
 - SFTP mirror node1 → node3 over the overlay via lsyncd, verified including deletions.
 - `ufw` default-deny and key-only SSH on all four machines, verified against the
   effective `sshd -T` configuration rather than the intended one.
-- No database port bound to `0.0.0.0` anywhere; all bind the overlay address.
+- Fail2Ban on all three nodes, banning via ufw, with the LAN and overlays exempt.
+- RabbitMQ 3.13 on the edge, AMQP and management UI overlay-only.
+- Application hosting on node3: nginx plus SQLite, reachable only through the edge.
+- Nightly AES-256 encrypted backups of PostgreSQL, Redis, RabbitMQ definitions and
+  SQLite, stored on a third machine, with roles discovered at runtime and a restore
+  drilled end to end.
+- No database or application port bound to `0.0.0.0` anywhere; all bind the overlay.
 
 Outstanding:
 
@@ -420,7 +426,7 @@ Outstanding:
 - Gitea and Gitea Actions on the laptop (role written, not deployed).
 - Laptop not yet on the WireGuard overlay.
 - No public ingress: no router forward to the edge, and no TLS site on `:443`.
-- Monitoring, metrics and backups beyond the SFTP mirror.
+- Monitoring and metrics.
 - Open security gaps are tracked in [docs/security/posture.md](docs/security/posture.md).
 
 Explicitly cut from the original plan: MongoDB, Microsoft SQL Server, RabbitMQ,
