@@ -24,7 +24,7 @@ Two constraints shape every decision here, and both are hardware-imposed:
 | Host | LAN | Overlay | OS | Role |
 |---|---|---|---|---|
 | `node1-gateway` | 192.168.0.101 (also .23) | 10.44.0.1 | Ubuntu 22.04.5 | Edge: Caddy, Vault, SFTP primary, Sentinel |
-| `node2-data-replica` | 192.168.0.28 | 10.44.0.2 | Ubuntu 22.04.5 | PostgreSQL **primary**, Redis, Sentinel |
+| `node2-data-replica` | 192.168.0.28 | 10.44.0.2 | Ubuntu 24.04 | PostgreSQL **primary**, Redis, Sentinel |
 | `node3-data` | 192.168.0.103 | 10.44.0.3 | Ubuntu 22.04.5 | PostgreSQL standby, Redis, SFTP mirror, Sentinel |
 | laptop (`node4`) | 192.168.0.35 | *(not on overlay)* | — | Ansible controller |
 
@@ -162,7 +162,8 @@ platform. They were removed to fit 3.7 GB of RAM per node:
 
 ## Operating-system reality
 
-Ubuntu Server **22.04.5** on node1, node2 and node3. The repository's earlier claim of
-"24.04 LTS everywhere" is aspirational, not current. Mixed versions are accepted
+Ubuntu Server **22.04.5** on node1 and node3, **24.04** on node2, **26.04** on the
+laptop. The repository's earlier claim of "24.04 LTS everywhere" is aspirational, not
+current. Mixed versions are accepted
 deliberately: reinstalling working data nodes to align a version number is not worth
 the outage, and the Ansible roles are written to work on both.
