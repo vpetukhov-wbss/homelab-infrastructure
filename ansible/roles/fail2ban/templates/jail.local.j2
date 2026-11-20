@@ -20,6 +20,6 @@ banaction = ufw
 
 [sshd]
 enabled = true
-# Each host runs sshd on a different port, so take it from the inventory rather than
-# assuming 22 — a wrong port here means the jail silently never matches.
-port    = {{ ansible_port | default(22) }}
+# Read from sshd itself rather than inventory: node1 uses 2222 and the laptop 2345,
+# and a wrong port here means the jail loads fine and silently never matches.
+port    = {{ f2b_sshd_port.stdout | trim }}

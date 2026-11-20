@@ -7,6 +7,22 @@
     cache_valid_time: 3600
   become: true
 
+# Do not take the port from inventory: the laptop connects locally and carries no
+# ansible_port, which would silently yield 22 while sshd actually listens on 2345 —
+# a jail that loads cleanly and never matches anything. Ask sshd what it is using.
+- name: Detect the port sshd actually listens on
+  ansible.builtin.shell:
+    cmd: "sshd -T 2>/dev/null | awk '/^port /{print $2}' | head -1"
+    executable: /bin/bash
+  become: true
+  register: f2b_sshd_port
+  changed_when: false
+
+- name: Fail if the sshd port could not be determined
+  ansible.builtin.assert:
+    that: f2b_sshd_port.stdout | trim | length > 0
+    fail_msg: "Could not read the sshd port on {{ inventory_hostname }}; refusing to guess."
+
 - name: Template jail.local
   ansible.builtin.template:
     src: jail.local.j2
