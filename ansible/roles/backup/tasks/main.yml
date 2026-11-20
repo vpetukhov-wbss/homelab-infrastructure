@@ -1,0 +1,86 @@
+---
+# Nightly logical backups, stored on the edge node and encrypted at rest.
+#
+# Placement: backups must not share a disk with the data they protect, so they land
+# on node1 rather than on either data node.
+# Encryption: these machines have no LUKS, so anyone who removes a disk reads whatever
+# is on it. The archive is therefore encrypted with AES-256 before it is written.
+
+- name: Create the backup and secrets directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ backup_secrets_dir }}", mode: "0700" }
+    - { path: "{{ backup_dir }}", mode: "0700" }
+  become: true
+
+- name: Install the archive passphrase
+  ansible.builtin.copy:
+    content: "{{ vault_backup_passphrase }}"
+    dest: "{{ backup_secrets_dir }}/backup.pass"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+
+# Credentials go in a 0600 env file rather than on the command line, where any user
+# could read them out of `ps`.
+- name: Install the backup credentials
+  ansible.builtin.copy:
+    content: |
+      PG_PASSWORD='{{ vault_pg_password }}'
+      REDIS_PASSWORD='{{ vault_redis_password }}'
+      RABBIT_USER='{{ rabbitmq_user | default("homelab") }}'
+      RABBIT_PASSWORD='{{ vault_rabbitmq_password }}'
+    dest: "{{ backup_secrets_dir }}/backup.env"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Install the backup script
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: "{{ backup_secrets_dir }}/backup.sh"
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+- name: Install the systemd service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - homelab-backup.service
+    - homelab-backup.timer
+  become: true
+  notify: reload systemd
+
+- name: Enable the backup timer
+  ansible.builtin.systemd:
+    name: homelab-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+# A backup system that has never run is an assumption, not a safeguard. Run it once
+# now; the script fails loudly if the archive does not decrypt and list cleanly.
+- name: Run the backup once to prove it works
+  ansible.builtin.command:
+    cmd: "{{ backup_secrets_dir }}/backup.sh"
+  become: true
+  register: backup_first_run
+  changed_when: true
+
+- name: Show the first run
+  ansible.builtin.debug:
+    var: backup_first_run.stdout_lines

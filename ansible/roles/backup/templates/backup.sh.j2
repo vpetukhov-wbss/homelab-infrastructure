@@ -1,0 +1,95 @@
+#!/bin/bash
+# Managed by Ansible (homelab) — nightly logical backup of the data platform.
+#
+# Why logical dumps when a streaming replica already exists: the replica is NOT a
+# backup. It applies DROP TABLE and corrupting UPDATEs within milliseconds. Only an
+# independent point-in-time copy survives an operator mistake.
+#
+# Roles are discovered at runtime, never assumed: Sentinel moves the Redis master and
+# a PostgreSQL promotion moves the primary, so hardcoding a host would silently start
+# backing up a read-only standby.
+set -euo pipefail
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+DEST="{{ backup_dir }}"
+KEEP={{ backup_keep }}
+PASS_FILE="{{ backup_secrets_dir }}/backup.pass"
+ENV_FILE="{{ backup_secrets_dir }}/backup.env"
+
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+
+TMP="$(mktemp -d)"
+cleanup() { rm -rf "$TMP"; }
+trap cleanup EXIT
+
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+
+# --- 1. locate the PostgreSQL primary -----------------------------------------
+PRIMARY=""
+for ip in {{ backup_pg_candidates | join(' ') }}; do
+  state="$(docker run --rm -e PGPASSWORD="$PG_PASSWORD" postgres:16 \
+            psql -h "$ip" -U postgres -d {{ backup_db_name }} -At \
+            -c 'select pg_is_in_recovery();' 2>/dev/null || true)"
+  if [ "$state" = "f" ]; then PRIMARY="$ip"; break; fi
+done
+if [ -z "$PRIMARY" ]; then
+  log "FATAL: no PostgreSQL primary found among {{ backup_pg_candidates | join(' ') }}"
+  exit 1
+fi
+log "PostgreSQL primary: $PRIMARY"
+
+# --- 2. dump PostgreSQL -------------------------------------------------------
+# Custom format (-Fc) so pg_restore can do selective restores and parallel loads.
+docker run --rm -e PGPASSWORD="$PG_PASSWORD" -v "$TMP:/out" postgres:16 \
+  pg_dump -h "$PRIMARY" -U postgres -d {{ backup_db_name }} -Fc -f /out/postgres.dump
+[ -s "$TMP/postgres.dump" ] || { log "FATAL: empty PostgreSQL dump"; exit 1; }
+log "PostgreSQL dump: $(du -h "$TMP/postgres.dump" | cut -f1)"
+
+# --- 3. locate the Redis master and snapshot it -------------------------------
+REDIS_MASTER="$(docker exec redis-sentinel redis-cli -p 26379 \
+                 sentinel get-master-addr-by-name homelab-redis 2>/dev/null | head -1)"
+if [ -z "$REDIS_MASTER" ]; then
+  log "FATAL: Sentinel did not report a Redis master"
+  exit 1
+fi
+log "Redis master: $REDIS_MASTER"
+docker run --rm -v "$TMP:/out" redis:7-alpine \
+  redis-cli -h "$REDIS_MASTER" -a "$REDIS_PASSWORD" --no-auth-warning \
+  --rdb /out/redis.rdb >/dev/null 2>&1
+[ -s "$TMP/redis.rdb" ] || { log "FATAL: empty Redis snapshot"; exit 1; }
+log "Redis snapshot: $(du -h "$TMP/redis.rdb" | cut -f1)"
+
+# --- 4. RabbitMQ definitions (topology, not message bodies) -------------------
+if docker ps --filter name=rabbitmq --filter status=running -q | grep -q .; then
+  docker exec rabbitmq rabbitmqadmin -u "$RABBIT_USER" -p "$RABBIT_PASSWORD" \
+    export /tmp/definitions.json >/dev/null 2>&1 &&
+  docker cp rabbitmq:/tmp/definitions.json "$TMP/rabbitmq-definitions.json" >/dev/null 2>&1 &&
+  docker exec rabbitmq rm -f /tmp/definitions.json || log "WARN: RabbitMQ export failed"
+fi
+
+# --- 5. archive and encrypt ---------------------------------------------------
+# There is no disk encryption on these machines, so the archive is encrypted at rest.
+OUT="$DEST/homelab-$STAMP.tar.gz.enc"
+tar -C "$TMP" -czf - . \
+  | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$PASS_FILE" -out "$OUT"
+chmod 600 "$OUT"
+
+# --- 6. prove the archive actually decrypts -----------------------------------
+# An unverified backup is a guess. Decrypt and list it before trusting the run.
+if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass "file:$PASS_FILE" -in "$OUT" \
+     | tar -tzf - >/dev/null 2>&1; then
+  log "FATAL: archive failed verification, removing it"
+  rm -f "$OUT"
+  exit 1
+fi
+log "verified: $OUT ($(du -h "$OUT" | cut -f1))"
+
+# --- 7. retention -------------------------------------------------------------
+# shellcheck disable=SC2012
+ls -1t "$DEST"/homelab-*.tar.gz.enc 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+  log "pruning $(basename "$old")"
+  rm -f "$old"
+done
+
+log "done; $(ls -1 "$DEST"/homelab-*.tar.gz.enc 2>/dev/null | wc -l) archive(s) retained"

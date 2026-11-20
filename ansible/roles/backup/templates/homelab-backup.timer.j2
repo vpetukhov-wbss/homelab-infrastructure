@@ -1,0 +1,12 @@
+# Managed by Ansible (homelab)
+[Unit]
+Description=Run the homelab backup on a schedule
+
+[Timer]
+OnCalendar={{ backup_on_calendar }}
+# Spread the start so a cold boot does not run it against half-started containers.
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

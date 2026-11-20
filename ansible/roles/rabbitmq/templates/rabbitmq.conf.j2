@@ -1,0 +1,20 @@
+# Managed by Ansible (homelab) — RabbitMQ on {{ inventory_hostname }}
+
+# Listen on all container interfaces; the host-side publish is already pinned to the
+# overlay IP in docker-compose, so this does not widen exposure.
+listeners.tcp.default = 5672
+management.tcp.port = 15672
+
+# Hard memory ceiling. Stated absolutely rather than as vm_memory_high_watermark.relative
+# so the broker's appetite does not grow if the node gains RAM.
+vm_memory_high_watermark.absolute = {{ rabbitmq_vm_watermark }}
+
+# Block publishers before the spinning disk fills — a full disk on these nodes would
+# take PostgreSQL down with it.
+disk_free_limit.absolute = {{ rabbitmq_disk_free_limit }}
+
+# The default guest account is only usable from loopback, but remove any doubt.
+loopback_users.guest = true
+
+log.console = true
+log.console.level = info

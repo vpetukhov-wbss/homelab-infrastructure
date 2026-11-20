@@ -1,0 +1,34 @@
+# Managed by Ansible (homelab) — RabbitMQ on {{ inventory_hostname }}
+# Both AMQP and the management UI bind ONLY to the overlay IP ({{ wg_overlay_ip }}).
+# Docker publishes ports by writing to its own iptables chain, which is evaluated
+# before ufw's INPUT chain — so this binding, not the firewall, is what keeps the
+# broker off the LAN. Never change these to 0.0.0.0.
+services:
+  rabbitmq:
+    image: {{ rabbitmq_image }}
+    container_name: rabbitmq
+    restart: unless-stopped
+    hostname: rabbit-{{ inventory_hostname }}
+    environment:
+      RABBITMQ_DEFAULT_USER: "{{ rabbitmq_user }}"
+      RABBITMQ_DEFAULT_PASS: "{{ vault_rabbitmq_password }}"
+      RABBITMQ_DEFAULT_VHOST: "{{ rabbitmq_vhost }}"
+    volumes:
+      - {{ stack_dir }}/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "{{ wg_overlay_ip }}:5672:5672"
+      - "{{ wg_overlay_ip }}:15672:15672"
+    deploy:
+      resources:
+        limits:
+          memory: {{ rabbitmq_memory_limit }}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  rabbitmq_data:

@@ -1,0 +1,11 @@
+---
+# RabbitMQ sizing. These boxes are 2-core / 3.7 GB, so the broker is capped well
+# below what it would otherwise take; the high-watermark is an absolute value rather
+# than a fraction so it does not scale up if the node is ever given more RAM.
+rabbitmq_image: rabbitmq:3.13-management-alpine
+rabbitmq_user: homelab
+rabbitmq_vhost: /homelab
+rabbitmq_memory_limit: 512m
+rabbitmq_vm_watermark: 384MiB
+# Disk-free guard: RabbitMQ blocks publishers when free disk drops below this.
+rabbitmq_disk_free_limit: 2GB

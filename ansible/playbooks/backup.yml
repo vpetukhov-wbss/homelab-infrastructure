@@ -1,0 +1,9 @@
+---
+# Nightly encrypted logical backups, stored on the edge node.
+- name: Backup layer
+  hosts: edge
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/rabbitmq
+  roles:
+    - backup

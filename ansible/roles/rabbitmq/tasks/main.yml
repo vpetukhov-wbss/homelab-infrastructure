@@ -1,0 +1,52 @@
+---
+# RabbitMQ on the edge node. It lives here rather than on a data node because the
+# ThinkCentres have spinning disks: a broker with persistent queues competing with
+# PostgreSQL for the same spindle is the worst placement available. node1's disk is
+# comparatively idle (Caddy, Vault and SFTP are all low-I/O).
+- name: Create the RabbitMQ stack directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Template rabbitmq.conf
+  ansible.builtin.template:
+    src: rabbitmq.conf.j2
+    dest: "{{ stack_dir }}/rabbitmq.conf"
+    mode: "0644"
+
+- name: Template docker-compose (host-only, contains the broker password)
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ stack_dir }}/docker-compose.yml"
+    mode: "0600"
+  no_log: true
+
+- name: Deploy RabbitMQ
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for the broker to answer a diagnostics ping
+  ansible.builtin.command:
+    cmd: docker exec rabbitmq rabbitmq-diagnostics -q ping
+  register: rmq_ping
+  until: rmq_ping.rc == 0
+  retries: 20
+  delay: 10
+  changed_when: false
+
+# Guard against the single worst misconfiguration: the broker reachable off-overlay.
+- name: Assert RabbitMQ is NOT listening on a public address
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      ss -ltn | awk 'NR>1 {print $4}' | grep -E '^(0\.0\.0\.0|\[::\]):(5672|15672)$' && exit 1
+      exit 0
+    executable: /bin/bash
+  register: rmq_bind
+  changed_when: false
+  failed_when: rmq_bind.rc != 0
+  become: true

@@ -1,0 +1,13 @@
+# Managed by Ansible (homelab)
+[Unit]
+Description=Homelab logical backup (PostgreSQL, Redis, RabbitMQ definitions)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart={{ backup_secrets_dir }}/backup.sh
+# The script needs docker and reads 0600 secrets.
+User=root
+# A stuck pg_dump must not wedge the timer forever.
+TimeoutStartSec=3600

@@ -1,0 +1,9 @@
+---
+# RabbitMQ on the edge node (overlay-only AMQP + management UI).
+- name: RabbitMQ broker
+  hosts: edge
+  gather_facts: true
+  vars:
+    stack_dir: /home/vpetukhov/stacks/rabbitmq
+  roles:
+    - rabbitmq
