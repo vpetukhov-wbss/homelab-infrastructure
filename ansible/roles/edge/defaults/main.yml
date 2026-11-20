@@ -3,3 +3,9 @@
 # A bind mount (rather than a named volume) is what lets lsyncd on this node
 # watch the tree directly — see the sftp_mirror role.
 sftp_data_dir: "{{ stack_dir }}/sftp_data"
+
+# Backend that Caddy proxies public traffic to. Applications live on the app host,
+# never on this node: node1 terminates public traffic and holds Vault, so it is the
+# worst possible neighbour for application code.
+edge_app_backend_host: node3-data
+edge_app_backend_port: 8080

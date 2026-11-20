@@ -1,0 +1,7 @@
+---
+# Fail2Ban across the fleet.
+- name: Intrusion mitigation
+  hosts: edge:data_primary:data_replica
+  gather_facts: true
+  roles:
+    - fail2ban

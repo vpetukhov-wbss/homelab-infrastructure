@@ -11,3 +11,10 @@ backup_on_calendar: "daily"
 backup_pg_candidates:
   - "{{ hostvars['node2'].wg_overlay_ip }}"
   - "{{ hostvars['node3-data'].wg_overlay_ip }}"
+
+# SQLite lives on the app host. Copying a .db file while it is being written yields a
+# torn database, so the script runs `sqlite3 .backup` over SSH instead, which takes a
+# consistent snapshot even under concurrent writes.
+backup_sqlite_host: node3-data
+backup_sqlite_dir: /home/vpetukhov/stacks/apphost/sqlite
+backup_sqlite_ssh_key: /etc/lsyncd/id_sftp_mirror

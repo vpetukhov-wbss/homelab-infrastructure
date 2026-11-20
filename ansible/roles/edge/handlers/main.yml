@@ -1,0 +1,9 @@
+---
+# `admin off` in the Caddyfile disables the admin API, so `caddy reload` cannot work
+# (it posts to localhost:2019). And `docker compose up -d` does not recreate a
+# container when only a bind-mounted file changed. Without this handler, Caddyfile
+# edits are templated to disk and silently never take effect.
+- name: restart caddy
+  ansible.builtin.command:
+    cmd: docker restart caddy
+  changed_when: true

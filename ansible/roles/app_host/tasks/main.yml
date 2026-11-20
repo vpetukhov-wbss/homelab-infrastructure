@@ -1,0 +1,92 @@
+---
+# Application host: nginx plus a place for app containers and SQLite databases.
+#
+# Placement: node3 rather than the edge or the write primary. node1 holds Vault and
+# terminates public traffic, so application code is the worst possible neighbour for
+# it; node2 is the PostgreSQL primary and the single spindle is already the ceiling.
+# node3 has the largest disk and a read-mostly workload.
+
+- name: Create the application directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ app_stack_dir }}"
+    - "{{ app_sites_dir }}"
+    - "{{ app_www_dir }}"
+
+# SQLite is a file, not a service. It gets its own directory so the backup job can
+# snapshot it with `sqlite3 .backup` (consistent) rather than copying a file that may
+# be mid-write, and so app containers mount only their own data.
+- name: Create the SQLite data directory
+  ansible.builtin.file:
+    path: "{{ app_sqlite_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Install the sqlite3 client for administration and consistent backups
+  ansible.builtin.apt:
+    name: sqlite3
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Template nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ app_stack_dir }}/nginx.conf"
+    mode: "0644"
+
+- name: Template the default vhost
+  ansible.builtin.template:
+    src: default-site.conf.j2
+    dest: "{{ app_sites_dir }}/00-default.conf"
+    mode: "0644"
+
+- name: Create a placeholder index page
+  ansible.builtin.copy:
+    content: |
+      <!doctype html>
+      <meta charset="utf-8">
+      <title>homelab app host</title>
+      <h1>Application host is serving</h1>
+      <p>Drop vhosts in {{ app_sites_dir }} and site files in {{ app_www_dir }}.</p>
+    dest: "{{ app_www_dir }}/index.html"
+    mode: "0644"
+    force: false
+
+- name: Template docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ app_stack_dir }}/docker-compose.yml"
+    mode: "0640"
+
+- name: Deploy the application host
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ app_stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for nginx to serve its health endpoint on the overlay
+  ansible.builtin.uri:
+    url: "http://{{ wg_overlay_ip }}:{{ app_nginx_port }}/health"
+    status_code: 200
+  register: app_health
+  until: app_health.status == 200
+  retries: 15
+  delay: 3
+
+- name: Assert nginx is NOT listening on a public address
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      ss -ltn | awk 'NR>1 {print $4}' | grep -E "^(0\.0\.0\.0|\[::\]):{{ app_nginx_port }}$" && exit 1
+      exit 0
+    executable: /bin/bash
+  register: app_bind
+  changed_when: false
+  failed_when: app_bind.rc != 0
+  become: true

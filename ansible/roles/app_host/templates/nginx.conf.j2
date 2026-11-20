@@ -1,0 +1,35 @@
+# Managed by Ansible (homelab) — application nginx on {{ inventory_hostname }}
+# This nginx is NOT public. Caddy on the edge node is the only thing that reaches it,
+# over the overlay. Keep it that way: the compose file binds {{ wg_overlay_ip }} only.
+user  nginx;
+worker_processes  auto;
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events { worker_connections 1024; }
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    # Log the forwarded client address, otherwise every line shows Caddy's overlay IP.
+    log_format main '$http_x_forwarded_for - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
+    access_log /var/log/nginx/access.log main;
+
+    sendfile      on;
+    tcp_nopush    on;
+    keepalive_timeout 65;
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    # Do not advertise the version to anything that gets this far.
+    server_tokens off;
+
+    # Baseline headers. TLS is terminated at Caddy, so HSTS belongs there, not here.
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    include /etc/nginx/sites/*.conf;
+}

@@ -1,16 +1,39 @@
-# Managed by Ansible (homelab) — node1 edge reverse proxy
+# Managed by Ansible (homelab) — edge reverse proxy on {{ inventory_hostname }}
+# This is the ONLY public listener in the platform. Everything it proxies to lives on
+# the WireGuard overlay and is not reachable from the LAN or the Internet directly.
 {
 	admin off
+	# TLS is not configured yet: there is no public DNS name or router forward, so
+	# automatic certificate issuance would fail on every start. Turn this on together
+	# with a real hostname.
 	auto_https off
 }
 
-# Public ingress on :80 (router forwards 80/443 here). Real service routes
-# (reverse_proxy to Gitea over the overlay, etc.) get added as services come online.
 :80 {
+	# Caddy's own liveness, answered here so it does not depend on the backend.
 	handle /health {
 		respond "ok" 200
 	}
+
+	# Everything else goes to the application host over the overlay.
 	handle {
-		respond "homelab edge (Caddy) up — reverse proxy ready" 200
+		reverse_proxy {{ hostvars[edge_app_backend_host].wg_overlay_ip }}:{{ edge_app_backend_port }} {
+			health_uri /health
+			health_interval 30s
+			health_timeout 5s
+
+			# Preserve the real client for the application's logs; without these the
+			# backend sees only this node's overlay address.
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
 	}
 }

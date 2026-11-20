@@ -1,0 +1,18 @@
+---
+# Fail2Ban. SSH is already key-only fleet-wide, so this is not the control that stops
+# password brute force — that is already impossible. It is here to cut the volume of
+# scanning traffic and log noise, and to slow anyone probing the edge.
+f2b_bantime: 1h
+f2b_findtime: 10m
+f2b_maxretry: 5
+# Repeat offenders get progressively longer bans.
+f2b_bantime_increment: true
+f2b_bantime_maxtime: 1w
+# NEVER ban ourselves. The LAN carries the Ansible controller and the overlay carries
+# every inter-node connection; banning either would cut the fleet apart.
+f2b_ignoreip:
+  - 127.0.0.1/8
+  - ::1
+  - 192.168.0.0/24
+  - 10.44.0.0/24
+  - 10.10.10.0/24

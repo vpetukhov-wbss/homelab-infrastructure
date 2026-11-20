@@ -84,13 +84,21 @@
     dest: "{{ stack_dir }}/sftp_keys/homelab.pub"
     mode: "0644"
 
-- name: Template Caddyfile, vault.hcl, compose
+# Templated separately from the others so a Caddyfile change can trigger the restart
+# that is the only way to apply it — see handlers/main.yml.
+- name: Template the Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ stack_dir }}/Caddyfile"
+    mode: "0644"
+  notify: restart caddy
+
+- name: Template vault.hcl and compose
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ stack_dir }}/{{ item.dest }}"
     mode: "{{ item.mode }}"
   loop:
-    - { src: Caddyfile.j2, dest: Caddyfile, mode: "0644" }
     - { src: vault.hcl.j2, dest: vault.hcl, mode: "0644" }
     - { src: docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
 
@@ -100,6 +108,9 @@
     chdir: "{{ stack_dir }}"
   register: compose_up
   changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Apply any pending Caddy restart before checking health
+  ansible.builtin.meta: flush_handlers
 
 - name: Wait for Caddy health endpoint
   ansible.builtin.uri:

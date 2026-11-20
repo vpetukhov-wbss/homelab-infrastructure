@@ -1,0 +1,27 @@
+# Managed by Ansible (homelab) — application host on {{ inventory_hostname }}
+# The published port binds the overlay address ONLY. Docker writes its own iptables
+# rules ahead of ufw's INPUT chain, so this binding — not the firewall — is what keeps
+# applications off the LAN.
+services:
+  nginx:
+    image: {{ app_nginx_image }}
+    container_name: app-nginx
+    restart: unless-stopped
+    volumes:
+      - {{ app_stack_dir }}/nginx.conf:/etc/nginx/nginx.conf:ro
+      - {{ app_sites_dir }}:/etc/nginx/sites:ro
+      - {{ app_www_dir }}:/usr/share/nginx/html:ro
+    ports:
+      - "{{ wg_overlay_ip }}:{{ app_nginx_port }}:8080"
+    networks:
+      - apphost
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  # Your application containers join this network to be reachable by nginx by name.
+  apphost:
+    name: apphost

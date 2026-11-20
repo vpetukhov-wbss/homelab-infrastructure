@@ -1,0 +1,12 @@
+---
+# Application host. nginx serves sites and proxies to app containers; it is reached
+# only from the edge node's Caddy over the WireGuard overlay.
+app_stack_dir: /home/vpetukhov/stacks/apphost
+app_nginx_image: nginx:1.27-alpine
+# Host-side port, bound to the overlay address only — never 0.0.0.0.
+app_nginx_port: 8080
+# SQLite lives here. Kept in its own directory so the backup job can snapshot it
+# consistently and so app containers mount only what they need.
+app_sqlite_dir: /home/vpetukhov/stacks/apphost/sqlite
+app_sites_dir: /home/vpetukhov/stacks/apphost/sites
+app_www_dir: /home/vpetukhov/stacks/apphost/www

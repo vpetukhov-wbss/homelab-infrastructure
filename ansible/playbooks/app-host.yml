@@ -1,0 +1,7 @@
+---
+# Application host: nginx + SQLite on the replica node, reached only via the edge.
+- name: Application host
+  hosts: data_replica
+  gather_facts: true
+  roles:
+    - app_host

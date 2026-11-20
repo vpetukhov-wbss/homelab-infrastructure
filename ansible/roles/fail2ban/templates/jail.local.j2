@@ -1,0 +1,25 @@
+# Managed by Ansible (homelab) — Fail2Ban on {{ inventory_hostname }}
+[DEFAULT]
+# Addresses that can never be banned. Losing the controller's or a peer's access
+# would be a self-inflicted outage far worse than the scanning this mitigates.
+ignoreip = {{ f2b_ignoreip | join(' ') }}
+
+bantime  = {{ f2b_bantime }}
+findtime = {{ f2b_findtime }}
+maxretry = {{ f2b_maxretry }}
+
+bantime.increment = {{ f2b_bantime_increment | lower }}
+bantime.maxtime   = {{ f2b_bantime_maxtime }}
+
+# Ubuntu ships its logs in the journal, not /var/log/auth.log.
+backend = systemd
+
+# ufw owns the firewall, so bans are inserted as ufw rules rather than raw iptables;
+# mixing the two leaves orphaned rules that ufw cannot see or clean up.
+banaction = ufw
+
+[sshd]
+enabled = true
+# Each host runs sshd on a different port, so take it from the inventory rather than
+# assuming 22 — a wrong port here means the jail silently never matches.
+port    = {{ ansible_port | default(22) }}

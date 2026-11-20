@@ -1,0 +1,51 @@
+---
+- name: Install Fail2Ban
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Template jail.local
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    mode: "0644"
+    validate: "sh -c 'test -s %s'"
+  become: true
+  notify: restart fail2ban
+
+- name: Enable and start Fail2Ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  become: true
+
+- name: Apply any pending restart before verifying
+  ansible.builtin.meta: flush_handlers
+
+# A jail that loaded but matches nothing is indistinguishable from no jail at all,
+# so confirm the sshd jail is actually active rather than trusting the service state.
+- name: Verify the sshd jail is active
+  ansible.builtin.command:
+    cmd: fail2ban-client status sshd
+  become: true
+  register: f2b_status
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: f2b_status.rc == 0
+
+- name: Confirm our own networks are exempt
+  ansible.builtin.command:
+    cmd: fail2ban-client get sshd ignoreip
+  become: true
+  register: f2b_ignore
+  changed_when: false
+  failed_when: "'192.168.0.0/24' not in f2b_ignore.stdout or '10.44.0.0/24' not in f2b_ignore.stdout"
+
+- name: Report jail state
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ f2b_status.stdout_lines | select('search', 'Currently banned|Total banned|Currently failed') | list }}"
