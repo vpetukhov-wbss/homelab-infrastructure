@@ -1,5 +1,10 @@
-# Managed by Ansible (homelab) — node4/laptop: Gitea (SQLite on SSD) + Actions runner.
-# Gitea SSH uses 2223 to avoid the laptop's own sshd (2345). HTTP on 3000 (LAN-internal).
+# Managed by Ansible (homelab) — Gitea + Actions runner on {{ inventory_hostname }}.
+# Moved off the laptop: a laptop is Wi-Fi, suspends and is memory-pressured, which are
+# all poor properties for a service. This node has the largest disk for repositories.
+#
+# Both listeners bind the overlay address ONLY. Docker's port rules are evaluated
+# before ufw's INPUT chain, so this binding — not the firewall — keeps Gitea off the
+# LAN. The web UI is reached through Caddy on the edge.
 services:
   gitea:
     image: gitea/gitea:1.22
@@ -9,19 +14,21 @@ services:
       USER_UID: "1000"
       USER_GID: "1000"
       GITEA__database__DB_TYPE: sqlite3
-      GITEA__server__DOMAIN: "{{ gitea_lan_ip }}"
-      GITEA__server__ROOT_URL: "http://{{ gitea_lan_ip }}:3000/"
-      GITEA__server__SSH_DOMAIN: "{{ gitea_lan_ip }}"
-      GITEA__server__SSH_PORT: "2223"
+      GITEA__server__DOMAIN: "{{ gitea_public_host }}"
+      GITEA__server__ROOT_URL: "{{ gitea_root_url }}"
+      GITEA__server__SSH_DOMAIN: "{{ wg_overlay_ip }}"
+      GITEA__server__SSH_PORT: "{{ gitea_ssh_port }}"
+      GITEA__server__SSH_LISTEN_PORT: "22"
       GITEA__actions__ENABLED: "true"
       GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__security__INSTALL_LOCK: "true"
     volumes:
       - {{ stack_dir }}/gitea-data:/data
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     ports:
-      - "3000:3000"
-      - "2223:22"
+      - "{{ wg_overlay_ip }}:{{ gitea_http_port }}:3000"
+      - "{{ wg_overlay_ip }}:{{ gitea_ssh_port }}:22"
 
   act_runner:
     image: gitea/act_runner:latest
@@ -30,10 +37,12 @@ services:
     depends_on:
       - gitea
     environment:
-      GITEA_INSTANCE_URL: "http://{{ gitea_lan_ip }}:3000"
+      GITEA_INSTANCE_URL: "http://{{ wg_overlay_ip }}:{{ gitea_http_port }}"
     volumes:
-      # /data holds .runner (populated by the one-time register step in the role tasks).
       - {{ stack_dir }}/runner-data:/data
+      # SECURITY: this grants CI jobs root-equivalent control of this host, which also
+      # runs the PostgreSQL standby and the application host. Acceptable only while
+      # every workflow here is first-party code. Revisit before running anything
+      # third-party — a rootless or DinD runner would be needed instead.
       - /var/run/docker.sock:/var/run/docker.sock
-    # Cap RAM to protect the laptop (it's the interactive box, already memory-pressured).
-    mem_limit: 1200m
+    mem_limit: 1024m

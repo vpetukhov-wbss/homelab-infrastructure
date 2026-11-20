@@ -1,0 +1,10 @@
+---
+# Gitea lives on the app/replica node, not the laptop and not the edge. The edge holds
+# Vault and terminates public traffic, which makes it a poor host for CI that executes
+# repository code.
+gitea_http_port: 3000
+gitea_ssh_port: 2223
+# Reached through Caddy on the edge under this path prefix.
+gitea_path_prefix: /git
+gitea_public_host: "{{ hostvars['node1-gateway'].ansible_host }}"
+gitea_root_url: "http://{{ hostvars['node1-gateway'].ansible_host }}{{ gitea_path_prefix }}/"

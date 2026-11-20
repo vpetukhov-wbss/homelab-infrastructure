@@ -1,5 +1,5 @@
 ---
-# node4/laptop: Gitea + Gitea Actions runner. Local docker (no sudo/become on the laptop).
+# Gitea + Actions runner on the app/replica node. Both listeners bind the overlay.
 - name: Create stack + data directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -25,7 +25,7 @@
 
 - name: Wait for Gitea HTTP to come up
   ansible.builtin.uri:
-    url: "http://127.0.0.1:3000/api/healthz"
+    url: "http://{{ wg_overlay_ip }}:{{ gitea_http_port }}/api/healthz"
     status_code: 200
   register: gitea_health
   until: gitea_health.status == 200
@@ -39,21 +39,33 @@
 
 - name: Generate a runner registration token (Gitea CLI)
   ansible.builtin.command:
-    cmd: docker exec gitea gitea --work-path /data actions generate-runner-token
+    # -u git: docker exec lands as root, and Gitea refuses to run as root
+    # ("Gitea is not supposed to be run as root"), so the CLI must drop to its own user.
+    cmd: docker exec -u git gitea gitea --work-path /data actions generate-runner-token
   register: runner_token
   changed_when: false
   when: not runner_registered.stat.exists
 
 - name: Register the act_runner (one-time)
   ansible.builtin.command:
+    # Two non-obvious requirements here.
+    # -w /data: `register` writes its .runner credential file into the CURRENT
+    # directory, not into /data. Without this the command reports success, writes
+    # nothing the daemon can find, and act_runner then loops on "token is empty".
+    # --entrypoint act_runner is required: the image's default entrypoint is
+    # `/sbin/tini -- run.sh`, a wrapper that configures itself from environment
+    # variables and ignores CLI flags entirely. Passing --instance to it produces
+    # "instance address is empty" and an endless retry loop.
     cmd: >
       docker run --rm
+      --entrypoint act_runner
+      -w /data
       -v {{ stack_dir }}/runner-data:/data
       gitea/act_runner:latest
       register --no-interactive
-      --instance http://{{ gitea_lan_ip }}:3000
+      --instance http://{{ wg_overlay_ip }}:{{ gitea_http_port }}
       --token {{ runner_token.stdout | trim }}
-      --name laptop-runner
+      --name {{ inventory_hostname }}-runner
       --labels ubuntu-latest:docker://node:20-bookworm,homelab:host
   when: not runner_registered.stat.exists
   no_log: true

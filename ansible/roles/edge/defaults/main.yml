@@ -9,3 +9,10 @@ sftp_data_dir: "{{ stack_dir }}/sftp_data"
 # worst possible neighbour for application code.
 edge_app_backend_host: node3-data
 edge_app_backend_port: 8080
+
+# Gitea is reached through this edge under a path prefix, since there is no DNS name
+# to give it a vhost of its own yet. Its ROOT_URL must match this prefix exactly or
+# every generated link points somewhere that does not exist.
+edge_gitea_host: node3-data
+edge_gitea_port: 3000
+edge_gitea_prefix: /git

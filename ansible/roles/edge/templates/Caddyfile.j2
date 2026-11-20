@@ -15,6 +15,17 @@
 		respond "ok" 200
 	}
 
+	# Gitea, under a path prefix. handle_path strips the prefix before forwarding,
+	# which is what Gitea expects when its ROOT_URL carries that same prefix.
+	# This must come before the catch-all below; Caddy evaluates handle blocks in order.
+	handle_path {{ edge_gitea_prefix }}/* {
+		reverse_proxy {{ hostvars[edge_gitea_host].wg_overlay_ip }}:{{ edge_gitea_port }} {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
 	# Everything else goes to the application host over the overlay.
 	handle {
 		reverse_proxy {{ hostvars[edge_app_backend_host].wg_overlay_ip }}:{{ edge_app_backend_port }} {
