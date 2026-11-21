@@ -33,6 +33,16 @@ PYTHONPATH=src python3 -m pulse_agent --config private/agent.ini inventory
 
 Disk profiles report the kernel-visible capacity in bytes, model and rotational flag when available. A missing or unsupported device returns `{"status":"unavailable"}` under its alias. Device paths and serial numbers are excluded. Virtual machines report the devices visible to the guest. The result is written locally to stdout for review.
 
+## SMART snapshots
+
+The host cycle can attach `diskSmart` readings from the optional `[smart_snapshots]` alias-to-file mappings. The agent reads sanitized snapshots and keeps its existing unprivileged account. For a local check, run the device reader on one approved drive and pipe its JSON directly into the normalizer.
+
+```bash
+sudo smartctl -j -H -A /dev/nvme0n1 | PYTHONPATH=src python3 -m pulse_agent smart-snapshot
+```
+
+For periodic telemetry, an external local producer should update one normalized file per approved disk about once a minute. Write to a temporary file in the destination directory and rename it over the mapped file after normalization succeeds. Keep the files readable by `pulse-agent` and the directory writable only by the producer. The normalizer preserves the source observation time and selected health, temperature, NVMe wear and error counters, or recognized ATA sector counters. It omits serial numbers, paths, command lines and raw attributes. Missing, malformed, failed or future-dated snapshots report `unavailable`. Readings older than three minutes retain their observation time with `stale` status and omit the metric values.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -53,9 +63,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `vault_pulse_agent_ingest_token` is unique for each host and comes from private encrypted inventory.
 - `pulse_agent_filesystems`, `pulse_agent_interfaces`, `pulse_agent_temperatures` and `pulse_agent_fans` map approved aliases to host resources.
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
+- `pulse_agent_smart_snapshots` renders the optional mappings for an external local SMART producer.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The scaffold covers the fast host cycle, queue, HTTP transport and deployment templates. SMART, Docker and database, broker, web server and CI probes are follow-up collectors. The .NET receiver owns history, retention, public projection and SignalR.
+The scaffold covers the fast host cycle, queue, HTTP transport and deployment templates. Automated SMART snapshot production, Docker and database, broker, web server and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

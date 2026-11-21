@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
+from . import smart
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -51,6 +52,8 @@ def collect(
     }
     if config.fans:
         values["fanSpeedsRpm"] = _fan_speeds(config.fans)
+    if config.smart_snapshots:
+        values["diskSmart"] = smart.collect(config.smart_snapshots)
     return values
 
 

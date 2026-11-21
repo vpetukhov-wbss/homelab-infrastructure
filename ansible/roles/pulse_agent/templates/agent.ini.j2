@@ -30,3 +30,8 @@ send_limit = 4
 {% for alias, device in pulse_agent_disks | dictsort %}
 {{ alias }} = {{ device }}
 {% endfor %}
+
+[smart_snapshots]
+{% for alias, path in pulse_agent_smart_snapshots | dictsort %}
+{{ alias }} = {{ path }}
+{% endfor %}

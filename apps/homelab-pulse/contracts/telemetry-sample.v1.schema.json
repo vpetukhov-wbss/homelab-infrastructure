@@ -63,6 +63,11 @@
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/alias" },
           "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "diskSmart": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": { "$ref": "#/$defs/diskSmartReading" }
         }
       }
     }
@@ -70,6 +75,36 @@
   "$defs": {
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
-    "nonnegative": { "type": "number", "minimum": 0 }
+    "nonnegative": { "type": "number", "minimum": 0 },
+    "diskSmartReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["available", "stale", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "temperatureCelsius": { "type": "integer" },
+        "healthPassed": { "type": "boolean" },
+        "nvmePercentageUsed": { "type": "integer", "minimum": 0 },
+        "nvmeMediaErrors": { "type": "integer", "minimum": 0 },
+        "reallocatedSectors": { "type": "integer", "minimum": 0 },
+        "pendingSectors": { "type": "integer", "minimum": 0 },
+        "offlineUncorrectableSectors": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "available" } } },
+          "then": { "required": ["observedAt"], "minProperties": 3 }
+        },
+        {
+          "if": { "properties": { "status": { "const": "stale" } } },
+          "then": { "required": ["observedAt"], "maxProperties": 2 }
+        },
+        {
+          "if": { "properties": { "status": { "const": "unavailable" } } },
+          "then": { "maxProperties": 1 }
+        }
+      ]
+    }
   }
 }

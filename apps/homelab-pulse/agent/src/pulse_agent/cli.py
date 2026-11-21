@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .collect import tick
-from .collectors import host, inventory
+from .collectors import host, inventory, smart
 from .config import Config, read_token
 from .models import Sample
 from .transport import Transport
@@ -19,13 +19,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--smbios-memory", action="store_true", help="Read dmidecode type 17 from stdin for inventory",
     )
-    parser.add_argument("command", choices=("sample", "inventory", "tick"))
+    parser.add_argument("command", choices=("sample", "inventory", "smart-snapshot", "tick"))
     args = parser.parse_args(argv)
     if args.smbios_memory and args.command != "inventory":
         parser.error("--smbios-memory requires inventory")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
+        if args.command == "smart-snapshot":
+            print(json.dumps(smart.normalize(sys.stdin)))
+            return 0
         if args.command == "inventory":
             disks = Config.load(args.config).disks if args.config else {}
             report = sys.stdin if args.smbios_memory else None
@@ -37,6 +40,6 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         token = read_token(args.token_file)
         return tick(settings, Transport(settings.ingest_url, token, settings.timeout_seconds))
-    except (OSError, ValueError, KeyError, IndexError, configparser.Error):
+    except (OSError, ValueError, KeyError, IndexError, RecursionError, configparser.Error):
         logging.error("Agent failed. Check its configuration, credential file and local metrics")
         return 1
