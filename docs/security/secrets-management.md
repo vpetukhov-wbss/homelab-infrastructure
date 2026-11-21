@@ -1,7 +1,7 @@
 # Secrets management
 
-> As deployed on **2026-11-21**. HashiCorp Vault is running but **not initialised**, so
-> today the source of truth for secrets is **ansible-vault** on the controller.
+> As deployed on **2026-11-21**. HashiCorp Vault is initialised but **holds no secrets
+> yet**, so today the source of truth for secrets is **ansible-vault** on the controller.
 
 ## Where every secret lives
 
@@ -17,7 +17,7 @@
 | Backup passphrase and credentials on node1 | `/etc/homelab/` | root only | Ansible, from ansible-vault |
 | SFTP-mirror sync key | node1 `/etc/lsyncd/id_sftp_mirror` | root only | regenerated and re-authorised by `sftp_mirror` |
 | Gitea secrets (`app.ini`) and the runner token | Gitea's data volume on node3 | container volume | the nightly `gitea dump` |
-| Vault unseal keys and root token | **not generated yet** | to be kept offline by the owner | [`runbooks/vault-init.md`](../runbooks/vault-init.md) |
+| Vault unseal key (one share) and initial root token | **on paper with the owner**, two copies in two places — never on a node, in the repository or in a chat | offline | nothing: a lost unseal key loses everything Vault holds ([`runbooks/vault-init.md`](../runbooks/vault-init.md)) |
 
 Variable names, without values, are listed in
 [`inventory/secrets.example.yml`](../../inventory/secrets.example.yml).
@@ -72,7 +72,8 @@ copies off the controller, and never in `/tmp`: on Ubuntu it is tmpfs, which is 
 
 ## Planned
 
-- **Vault initialisation** (roadmap M7). Application secrets then move to Vault;
+- **Vault in use** (roadmap M7): an admin identity and policies, the root token revoked,
+  raft snapshots in the backup. Application secrets then move to Vault;
   ansible-vault stays for bootstrap secrets such as the become password.
 - **The backup key offline** (age), plus an off-site copy of the backups (roadmap M8).
 - **Rotating service passwords** is not automated yet. Write the procedure the first

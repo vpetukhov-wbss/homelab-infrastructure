@@ -78,7 +78,8 @@ Full topology and service catalog:
 - the WireGuard mesh and its overlay guard;
 - PostgreSQL 16 primary plus standby, and Redis 7.4 with three Sentinels;
 - the Caddy edge, SFTP with its mirror, RabbitMQ, and the nginx/SQLite app host;
-- Vault (deployed, sealed and uninitialised, loopback only);
+- Vault (initialised, on the overlay only, no secrets in it yet; unsealed by hand after
+  every restart);
 - Gitea with its Actions runner (registered, no pipelines yet);
 - nightly encrypted backups with an off-node copy;
 - key-only SSH, Fail2Ban, SMART monitoring and watchdogs on every server.

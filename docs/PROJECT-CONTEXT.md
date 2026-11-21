@@ -327,6 +327,13 @@ lsyncd passes `-s` (`--protect-args`), which rrsync rejects ("option -s has been
 disabled"), and `default.rsyncssh` runs plain `ssh mv/rm`, which a forced command
 refuses. Use `default.rsync` with `protect_args = false`.
 
+### A secret printed to a terminal ends up wherever the terminal is copied
+
+The first `vault operator init` was pasted, output and all, into a chat on 2026-11-21 —
+the owner's habit is to paste the whole terminal as the "done" signal. Vault was still
+empty, so it was reset and initialised again. For any step that prints a secret: write
+it down, run `clear`, and reply with "done" only.
+
 ### Smaller ones
 
 - **`${#array[@]}` in a `.j2` bash template opens a Jinja comment** (`{#`): "Missing end
@@ -404,7 +411,8 @@ the relocation reverted.
 - Redis 7.4.12 master (node3) + replica (node2); roles persisted on disk; three
   Sentinels with authentication, quorum OK, state persisted (`myid`, peers, epoch 7).
 - Edge: Caddy proxying to Gitea and the app host, with security headers.
-- Vault 1.18.5 on loopback, uninitialised.
+- Vault 1.18.5 initialised (one unseal key, on paper with the owner), on the overlay only
+  (`10.44.0.1:8200`, LAN-route test blocked). Holds no secrets yet; re-seals on restart.
 - RabbitMQ 3.13.7. nginx app host + SQLite on node3.
 - Gitea 1.22.6 + act_runner 0.6.1: runner declared to Gitea, stable (0 restarts), jobs
   without the Docker socket and resource-capped. No job has been run as a test yet.
@@ -425,7 +433,7 @@ the relocation reverted.
 
 | Item | Why it is not done |
 |---|---|
-| **Vault `operator init`** | Generates unseal keys and the root token; the user runs it and stores the keys offline (`docs/runbooks/vault-init.md`). |
+| **Vault in use** | Initialised 2026-11-21. Still to do: admin policy + identity, then revoke the root token; raft snapshot in the backup; first consumers (roadmap M7). |
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |

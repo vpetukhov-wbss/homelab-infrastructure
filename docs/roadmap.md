@@ -52,7 +52,7 @@ the password manager never shares a host with CI jobs.
   `wal_log_hints`, capped slot).
 - [x] Redis 7.4 + 3 authenticated Sentinels with failover state persisted. A real
   failover was survived on 2026-11-18.
-- [x] Edge (Caddy), Vault deployed (sealed), SFTP with an rrsync-confined mirror,
+- [x] Edge (Caddy), Vault (initialised, on the overlay), SFTP with an rrsync-confined mirror,
   RabbitMQ, app host.
 - [x] Gitea + Actions runner on node3. The runner is registered, and jobs run without
   the Docker socket.
@@ -160,8 +160,12 @@ Each service goes through `/service-onboard`, which produces:
 
 ## M7 — Secrets in Vault
 
-- [ ] The owner runs `vault operator init` and keeps the unseal keys and root token
-  offline ([runbook](runbooks/vault-init.md)).
+- [x] The owner ran `vault operator init` on 2026-11-21 with one key share, and keeps the
+  key and the root token on paper ([runbook](runbooks/vault-init.md)). The first init's
+  output was pasted into a chat, so the empty Vault was reset and initialised again.
+- [x] Vault published on the overlay (`10.44.0.1:8200`). Reachable from node2 and
+  node3; the LAN-route test is blocked.
+- [ ] An admin policy and identity, then revoke the initial root token.
 - [ ] Back up Vault (Raft snapshot) and test the restore.
 - [ ] Move the first consumers from ansible-vault to Vault.
 

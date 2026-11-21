@@ -1,0 +1,6 @@
+---
+# node1 (edge). Not secret; tracked so it survives a controller rebuild.
+# Vault was initialised on 2026-11-21 (docs/runbooks/vault-init.md), so it is published
+# on the overlay instead of loopback. A brand-new, uninitialised Vault must start on
+# loopback again: whoever initialises a reachable, uninitialised Vault owns it.
+vault_publish_ip: "{{ wg_overlay_ip }}"

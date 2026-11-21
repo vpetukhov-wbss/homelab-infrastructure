@@ -82,7 +82,7 @@ reachable only over WireGuard.
 | Service | Node | Version | Listens on | State lives in | Backed up | Failover / runbook |
 |---|---|---|---|---|---|---|
 | Caddy (edge) | node1 | 2.11.9 | `0.0.0.0:80`, `:443` (LAN only — no router forward) | `caddy_data` volume | config in this repo | — |
-| Vault | node1 | 1.18.5 | `127.0.0.1:8200` until initialised | Raft volume | not yet (uninitialised) | [vault-init](../runbooks/vault-init.md) |
+| Vault | node1 | 1.18.5 | overlay `:8200` (initialised; re-seals on restart) | Raft data dir | not yet — raft snapshot planned (M7) | [vault-init](../runbooks/vault-init.md) |
 | SFTP | node1 | atmoz/sftp (digest-pinned) | overlay `:2022` | `~/stacks/edge/sftp_data` | nightly tree + live mirror on node3 | promote the mirror (`chown 1001:1001`) |
 | RabbitMQ | node1 | 3.13.7 | overlay `:5672`, `:15672` (UI) | volume | definitions nightly (not messages) | — |
 | PostgreSQL primary | node2 | 16.16 | overlay `:5432` | volume | nightly `pg_dump` + globals | manual — [postgres-promotion](../runbooks/postgres-promotion.md) |
@@ -236,18 +236,20 @@ password ([secrets management](../security/secrets-management.md)). The controll
 rebuilt from an encrypted recovery bundle that the installer stick carries
 ([controller recovery](../runbooks/controller-recovery.md)).
 
-HashiCorp Vault 1.18.5 runs on node1 with Raft storage behind self-signed TLS. It is
-**deployed but not initialised**, and published on loopback only until it is — see
-[Planned](#planned-not-deployed) and [`docs/runbooks/vault-init.md`](../runbooks/vault-init.md).
+HashiCorp Vault 1.18.5 runs on node1 with Raft storage behind self-signed TLS. It was
+**initialised on 2026-11-21** (one unseal key, held offline by the owner) and is published
+on the overlay only; it re-seals on every restart and is unsealed by hand. It holds no
+secrets yet — see [Planned](#planned-not-deployed) and
+[`docs/runbooks/vault-init.md`](../runbooks/vault-init.md).
 
 Gitea 1.22.6 and its Actions runner run on **node3** (moved off the laptop); jobs run in
 containers without the Docker socket.
 
 ## Planned, not deployed
 
-- **Vault initialisation.** `vault operator init` has not been run; Vault is sealed
-  and uninitialised and holds no secrets. It cannot be an operational dependency until
-  the unseal keys and root token are generated and stored offline.
+- **Vault in use.** Initialised, but it holds no secrets yet: an admin policy and
+  identity (then revoking the root token), raft snapshots in the backup, and the first
+  consumers are roadmap M7.
 - **node4.** The laptop is being reinstalled headless (installer in `installer/`) to
   host MongoDB 8 — the only AVX machine — LocalStack, Vaultwarden and monitoring, and
   to be the controller. Until then it is not on the overlay (`10.44.0.4` reserved).

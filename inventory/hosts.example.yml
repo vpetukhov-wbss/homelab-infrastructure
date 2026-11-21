@@ -28,6 +28,8 @@ all:
               ansible_port: 2222
               wg_overlay_ip: 10.44.0.1
               ansible_ssh_common_args: "-o HostKeyAlias=node1-gateway"
+              # Only after `vault operator init` (docs/runbooks/vault-init.md):
+              # vault_publish_ip: "{{ wg_overlay_ip }}"
         data_primary:                   # PostgreSQL primary + Redis, Sentinel
           hosts:
             node2:

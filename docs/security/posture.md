@@ -15,7 +15,7 @@ What each machine listens on, and from where it can be reached.
 
 | Host | Reachable from the LAN | Overlay only (`10.44.0.x`, via `wg1`) | Loopback only |
 |---|---|---|---|
-| node1-gateway | 2222 SSH (LAN subnet + legacy `wg0` only), 80, 443 Caddy | 2022 SFTP, 26379 Sentinel, 5672 + 15672 RabbitMQ | 8200 Vault (until initialised) |
+| node1-gateway | 2222 SSH (LAN subnet + legacy `wg0` only), 80, 443 Caddy | 2022 SFTP, 8200 Vault, 26379 Sentinel, 5672 + 15672 RabbitMQ | — |
 | node2-data-replica | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel | — |
 | node3-data | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel, 8080 nginx, 3000 + 2223 Gitea | — |
 | laptop | 2345 SSH | — | — |
@@ -95,8 +95,15 @@ runner daemon itself holds the socket, which it needs to start job containers.
 
 ### Vault
 
-Uninitialised, so it is published on `127.0.0.1` only: whoever runs `operator init` on a
-reachable, uninitialised Vault owns it. See `docs/runbooks/vault-init.md`.
+Initialised on 2026-11-21 with **one unseal key** (single owner). The key and the initial
+root token are on paper with the owner — never on a node, in the repository or in a chat.
+Only after init was it moved from `127.0.0.1` to the overlay (`10.44.0.1:8200`): node2
+and node3 reach it over `wg1`, and the LAN-route test is blocked for 8200 as for every
+other overlay port. Vault re-seals on every restart and is unsealed by hand.
+
+The first init's output was pasted into a chat transcript. Vault was still empty, so it
+was reset (data directory replaced) and initialised again; the leaked key opens nothing.
+See `docs/runbooks/vault-init.md`.
 
 ### Secrets
 
@@ -135,7 +142,7 @@ root through the `docker` group — so root on node1 meant root on node3.
 
 | Gap | Risk | Fix |
 |---|---|---|
-| **Vault is uninitialised** | No runtime secret store; secrets sit in ansible-vault files | `docs/runbooks/vault-init.md`; keys stored offline |
+| **Vault holds nothing yet; the root token is live** | Secrets still sit in ansible-vault files; the initial root token can do anything | Admin policy + identity, then revoke the root token; raft snapshot in the backup (roadmap M7) |
 | **No TLS at the edge** | Gitea logins cross the LAN in clear text | A DNS name + certificate before any router forward |
 | **Backup key next to the archives** | Whoever takes node1's disk can decrypt its archives | Encrypt to an `age` public key; keep the identity offline |
 | **No off-site backup** | Both copies are in the same building | Weekly copy off site |
