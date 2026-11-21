@@ -78,6 +78,18 @@ else
   as_user tar -xf "$STAGE/repo-extra/worktree-and-ignored.tar" -C "$R"
   rm -rf "$UT"
   echo "  repository + inventory + vault files ... restored ($(as_user git -C "$R" rev-list --count HEAD) commits on $(cat "$STAGE/BRANCH"))"
+  # The stick's bundle can be older than GitHub: fast-forward when the remote is reachable
+  # (the deploy key and its ~/.ssh/config alias were restored in step 1).
+  B="$(cat "$STAGE/BRANCH")"
+  if as_user env GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15" git -C "$R" fetch -q origin 2>/dev/null; then
+    if as_user git -C "$R" merge -q --ff-only "origin/$B" 2>/dev/null; then
+      echo "  repository ............................. up to date with GitHub ($(as_user git -C "$R" rev-parse --short HEAD))"
+    else
+      echo "  repository ............................. could not fast-forward to origin/$B: run 'git pull' yourself"
+    fi
+  else
+    echo "  repository ............................. GitHub not reachable: run 'git pull' later"
+  fi
 fi
 
 # 6. The old laptop's /etc/wireguard (road-warrior wg0). Copied, NOT enabled: its address

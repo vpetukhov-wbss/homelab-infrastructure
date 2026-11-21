@@ -63,7 +63,9 @@ sudo homelab-restore
 It asks for the homelab password once and restores SSH keys, the vault password, the
 repository (full history, uncommitted files, git-ignored inventory and vault files),
 WireGuard backups and Claude Code's project memory, rebuilds the Ansible virtualenv and
-offers to install Claude Code. The password never goes on the stick; without it the
+offers to install Claude Code. If GitHub is reachable, it then fast-forwards the
+repository to the latest pushed commit, so a stick a little older than GitHub still
+restores the current state. The password never goes on the stick; without it the
 bundle is useless to whoever finds the stick. **Wipe or re-flash the stick after the
 install anyway** — it still carries the Wi-Fi PSK.
 
