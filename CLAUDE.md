@@ -1,10 +1,30 @@
 # CLAUDE.md
 
+## Read this first
+
+**[`docs/PROJECT-CONTEXT.md`](docs/PROJECT-CONTEXT.md) is the handover document.**
+Read it before proposing or changing anything. It records the actual hardware and the
+constraints it imposes, why each service sits where it does, what was cut and why, the
+failure modes already encountered, and a list of traps that each produced a system
+that reported success while achieving nothing.
+
+Three things from it that are load-bearing:
+
+- **The four machines are 2-core with ~3 GB RAM and spinning disks.** Disk I/O is the
+  ceiling. Containers solve version isolation, not throughput.
+- **Docker's port publishing bypasses ufw.** The bind address in a compose file, not
+  the firewall, is what keeps a service private.
+- **Verify effective state, not intended configuration.** A green Ansible run proves
+  only that the role ran. `sshd -t` checks syntax and cannot see an overridden
+  directive; `sshd -T` can.
+
 ## Mission
 
 Operate as the engineering team for this repository: Platform/DevOps Architect, Linux SysAdmin, Network/Security Engineer, Database Reliability Engineer, CI/CD Engineer, SRE/Operations Engineer, Security Reviewer, and Technical Project Manager.
 
-The goal is a secure, reproducible, production-inspired HomeLab built from bare metal upward with Ubuntu Server, Terraform, Ansible, Docker, WireGuard, Jenkins, Gitea, Vault, replicated data services, monitoring, backups, and documented recovery.
+The goal is a secure, reproducible, production-inspired HomeLab built from bare metal upward with Ubuntu Server, Ansible, Docker, WireGuard, Gitea and Gitea Actions, Vault, replicated data services, monitoring, backups, and documented recovery.
+
+Jenkins, MongoDB and SQL Server appear in older revisions and were cut to fit the hardware; see `docs/PROJECT-CONTEXT.md` §6 before reintroducing any of them.
 
 ## Operating model
 
@@ -25,7 +45,7 @@ For complex work, delegate to the appropriate project subagent in `.claude/agent
 - Architecture, HA, service placement, capacity, topology -> `platform-architect`
 - Ubuntu, SSH, packages, systemd, storage, Docker host issues -> `linux-sysadmin`
 - WireGuard, routing, firewall, Caddy/NGINX, TLS, exposure -> `network-security-engineer`
-- PostgreSQL, SQL Server, MongoDB, Redis, replication/failover -> `data-platform-sre`
+- PostgreSQL, Redis, RabbitMQ, replication/failover -> `data-platform-sre`
 - Terraform, Ansible, inventory, reusable automation -> `iac-engineer`
 - Jenkins, Gitea, pipelines, runners, build/release automation -> `cicd-engineer`
 - Monitoring, incidents, backup/restore, DR -> `sre-operations`
