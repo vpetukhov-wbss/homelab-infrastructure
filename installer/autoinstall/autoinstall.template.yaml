@@ -1,0 +1,87 @@
+# Ubuntu Server autoinstall template for a HomeLab node.
+#
+# Rendered by scripts/build-installer-iso.py, which substitutes @DISK_SERIAL@,
+# injects SSH *public* keys, validates the result against the installer's own
+# JSON schema and embeds it as /autoinstall.yaml on the ISO. Nothing here is
+# secret, but the rendered file carries real inventory (disk serial, keys), so
+# it is written to installer/build/, which is git-ignored.
+#
+# Safety, in the order the installer applies it:
+#   1. The stock boot menu has no `autoinstall` kernel argument, so the
+#      installer STOPS before writing anything and asks for confirmation
+#      (subiquity install controller -> NEEDS_CONFIRMATION). Never add that
+#      argument to this image.
+#   2. early-commands aborts unless a disk carrying the expected serial exists.
+#   3. storage.layout.match accepts only that disk. No match -> AutoinstallError
+#      before partitioning. Booting this stick in the wrong machine wipes nothing.
+#
+# Identity (hostname, username, password) is typed at the console, so no
+# password hash is baked into the image. Use the same username as the Ansible
+# inventory (ansible_user) and a sudo password that matches the vault.
+#
+# Everything role-specific (Docker, WireGuard, firewall, services) belongs to
+# Ansible, not to this file.
+autoinstall:
+  version: 1
+
+  interactive-sections:
+    - identity
+
+  # Reproducibility: install with the installer that shipped on the ISO.
+  refresh-installer:
+    update: false
+
+  early-commands:
+    - 'ls /dev/disk/by-id/ | grep -q "@DISK_SERIAL@" || { echo "Refusing to install: no disk with serial @DISK_SERIAL@ in this machine" >&2; exit 1; }'
+
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: Etc/UTC
+
+  source:
+    id: ubuntu-server
+    search_drivers: false
+
+  # Servers are wired. Wi-Fi is deliberately left unconfigured.
+  network:
+    version: 2
+    ethernets:
+      wired:
+        match:
+          name: "en*"
+        dhcp4: true
+        dhcp6: false
+        optional: true
+
+  storage:
+    layout:
+      name: lvm
+      # Default ("scaled") leaves most of the volume group unallocated; that
+      # trap hit all three servers (docs/PROJECT-CONTEXT.md section 7).
+      sizing-policy: all
+      match:
+        serial: "*@DISK_SERIAL@*"
+
+  ssh:
+    install-server: true
+    allow-pw: false
+    authorized-keys: []
+
+  # Reserving crash-kernel memory is not worth it on these RAM budgets.
+  kernel-crash-dumps:
+    enabled: false
+  drivers:
+    install: false
+  codecs:
+    install: false
+  updates: security
+
+  late-commands:
+    # Laptop hardware as a server: a closed lid or an idle timer must never
+    # suspend the machine before Ansible takes over. Harmless on desktops.
+    - curtin in-target -- systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+    - mkdir -p /target/etc/systemd/logind.conf.d
+    - printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' > /target/etc/systemd/logind.conf.d/00-homelab-server.conf
+
+  shutdown: reboot
