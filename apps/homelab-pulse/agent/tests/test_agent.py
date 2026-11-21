@@ -15,6 +15,7 @@ from uuid import uuid4
 from pulse_agent.cli import main
 from pulse_agent.collect import tick
 from pulse_agent.collectors import host, inventory
+from pulse_agent.collectors.smbios import MAX_REPORT_CHARS, read_memory_devices
 from pulse_agent.config import Config, read_token
 from pulse_agent.models import Sample
 from pulse_agent.outbox import Outbox
@@ -59,6 +60,51 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(profile["cpu"]["logicalCpuCount"], 2)
         self.assertNotIn("physicalCoreCount", profile["cpu"])
         self.assertNotIn("model", profile["cpu"])
+
+    def test_inventory_cli_imports_a_sanitized_memory_report(self):
+        source = io.StringIO(
+            "Handle 0x0001, DMI type 16, 23 bytes\nPhysical Memory Array\n\tSize: 128 GB\n\n"
+            "Handle 0x0002, DMI type 17, 84 bytes\nMemory Device\n"
+            "\tSize: 16 GB\n\tType: DDR4\n\tSpeed: 3200 MT/s\n"
+            "\tConfigured Memory Speed: 2666 MT/s\n"
+            "\tSerial Number: fixture-serial\n\tLocator: fixture-slot\n"
+            "\tAsset Tag: fixture-asset\n\tPart Number: fixture-part\n\n"
+            "Handle 0x0003, DMI type 17, 84 bytes\nMemory Device\n"
+            "\tSize: 8 GiB\n\tType: Unknown\n\tSpeed: Unknown\n"
+            "\tConfigured Clock Speed: 1200 MHz\n\n"
+            "Handle 0x0004, DMI type 17, 84 bytes\nMemory Device\n\tSize: No Module Installed\n"
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            (path / "cpuinfo").write_text("processor: 0\n")
+            (path / "meminfo").write_text("MemTotal: 8192 kB\n")
+            collect = partial(inventory.collect, proc=path, dmi=path / "dmi")
+            output = io.StringIO()
+            with (
+                patch("sys.stdin", source),
+                patch("pulse_agent.cli.inventory.collect", side_effect=collect),
+                redirect_stdout(output),
+            ):
+                self.assertEqual(main(["inventory", "--smbios-memory"]), 0)
+
+        self.assertEqual(json.loads(output.getvalue())["memory"], {
+            "osVisibleBytes": 8 * 1024**2,
+            "modules": [
+                {
+                    "capacityBytes": 16 * 1024**3,
+                    "type": "DDR4",
+                    "ratedSpeedMtPerSecond": 3200,
+                    "configuredSpeedMtPerSecond": 2666,
+                },
+                {"capacityBytes": 8 * 1024**3},
+            ],
+        })
+        for identifier in ("fixture-serial", "fixture-slot", "fixture-asset", "fixture-part"):
+            self.assertNotIn(identifier, output.getvalue())
+
+    def test_memory_report_rejects_oversized_input(self):
+        with self.assertRaisesRegex(ValueError, "exceeds the input limit"):
+            read_memory_devices(io.StringIO(" " * (MAX_REPORT_CHARS + 1)))
 
     def test_inventory_cli_reports_aliased_disks_without_local_identifiers(self):
         with tempfile.TemporaryDirectory() as temp:

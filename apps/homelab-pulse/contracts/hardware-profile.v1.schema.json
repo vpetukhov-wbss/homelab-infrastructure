@@ -29,7 +29,12 @@
       "additionalProperties": false,
       "required": ["osVisibleBytes"],
       "properties": {
-        "osVisibleBytes": { "$ref": "#/$defs/positiveInteger" }
+        "osVisibleBytes": { "$ref": "#/$defs/positiveInteger" },
+        "modules": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/memoryModule" }
+        }
       }
     },
     "disks": {
@@ -41,6 +46,17 @@
   "$defs": {
     "label": { "type": "string", "minLength": 1, "maxLength": 128 },
     "positiveInteger": { "type": "integer", "minimum": 1 },
+    "memoryModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capacityBytes"],
+      "properties": {
+        "capacityBytes": { "$ref": "#/$defs/positiveInteger" },
+        "type": { "$ref": "#/$defs/label" },
+        "ratedSpeedMtPerSecond": { "$ref": "#/$defs/positiveInteger" },
+        "configuredSpeedMtPerSecond": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
     "disk": {
       "type": "object",
       "additionalProperties": false,

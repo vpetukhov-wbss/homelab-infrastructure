@@ -1,12 +1,15 @@
 import platform
 from pathlib import Path
+from typing import TextIO
 
 from .host import read_memory
+from .smbios import read_memory_devices
 
 
 def collect(
     proc: Path = Path("/proc"), dmi: Path = Path("/sys/class/dmi/id"),
     *, disks: dict[str, str] | None = None, block_root: Path = Path("/sys/block"),
+    memory_report: TextIO | None = None,
 ) -> dict[str, object]:
     records = _cpu_records(proc / "cpuinfo")
     cpu = {"architecture": platform.machine(), "logicalCpuCount": len(records)}
@@ -30,10 +33,16 @@ def collect(
         if value:
             machine[field] = value
 
+    memory: dict[str, object] = {"osVisibleBytes": read_memory(proc)["totalBytes"]}
+    if memory_report is not None:
+        modules = read_memory_devices(memory_report)
+        if modules:
+            memory["modules"] = modules
+
     profile: dict[str, object] = {
         "machine": machine,
         "cpu": cpu,
-        "memory": {"osVisibleBytes": read_memory(proc)["totalBytes"]},
+        "memory": memory,
     }
     if disks:
         profile["disks"] = {alias: _disk(block_root / name) for alias, name in disks.items()}

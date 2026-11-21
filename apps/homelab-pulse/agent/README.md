@@ -13,7 +13,15 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 The `sample` command prints one private payload to stdout without requiring a token or making a network request. Filesystem, network and temperature results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
 
-The `inventory` command prints a [hardware profile](../contracts/hardware-profile.v1.schema.json) for review before adding it to the dashboard catalog. It reads available machine and CPU models, architecture, logical CPUs, reported physical cores and OS-visible RAM. The profile excludes serial numbers, system UUIDs, asset tags and hostnames. Values from DMI and CPU topology may be absent on virtual machines. Installed memory modules and RAM speed require separate hardware data.
+The `inventory` command prints a [hardware profile](../contracts/hardware-profile.v1.schema.json) for review before adding it to the dashboard catalog. It reads available machine and CPU models, architecture, logical CPUs, reported physical cores and OS-visible RAM. The profile excludes serial numbers, system UUIDs, asset tags and hostnames. Values from DMI and CPU topology may be absent on virtual machines.
+
+To include installed RAM modules, pipe a local SMBIOS Type 17 report into the inventory command. Only the administrator-run firmware reader may need elevated privileges.
+
+```bash
+sudo dmidecode --type 17 | PYTHONPATH=src python3 -m pulse_agent inventory --smbios-memory
+```
+
+Each populated module with a known capacity contributes its size in bytes and its reported RAM type and speeds, when available. The profile distinguishes rated and configured speeds in MT/s. Legacy MHz and unknown speed values are omitted. Empty slots, serial numbers, asset tags, part numbers and slot identifiers are excluded from the export. Hosts without usable SMBIOS records still report OS-visible RAM. The periodic agent runs as its existing unprivileged account.
 
 To include disk profiles, pass `--config` and map approved aliases to whole device names under `/sys/block` in the optional `[disks]` section. For example, `system = nvme0n1` selects the OS-visible NVMe namespace under the alias `system`. Kernel device names can change, so review the mapping after replacing or reordering drives. The command runs without elevated privileges or an ingest token.
 
