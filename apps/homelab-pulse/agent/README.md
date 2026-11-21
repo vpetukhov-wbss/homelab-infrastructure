@@ -13,7 +13,15 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 The `sample` command prints one private payload to stdout without requiring a token or making a network request. Filesystem, network and temperature results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
 
-The `inventory` command prints a hardware profile for review before adding it to the dashboard catalog. It reads available machine and CPU models, architecture, logical CPUs, reported physical cores and OS-visible RAM. The profile excludes serial numbers, system UUIDs, asset tags and hostnames. Values from DMI and CPU topology may be absent on virtual machines. Installed memory modules, RAM speed and physical drive inventory require separate hardware data.
+The `inventory` command prints a [hardware profile](../contracts/hardware-profile.v1.schema.json) for review before adding it to the dashboard catalog. It reads available machine and CPU models, architecture, logical CPUs, reported physical cores and OS-visible RAM. The profile excludes serial numbers, system UUIDs, asset tags and hostnames. Values from DMI and CPU topology may be absent on virtual machines. Installed memory modules and RAM speed require separate hardware data.
+
+To include disk profiles, pass `--config` and map approved aliases to whole device names under `/sys/block` in the optional `[disks]` section. For example, `system = nvme0n1` selects the OS-visible NVMe namespace under the alias `system`. Kernel device names can change, so review the mapping after replacing or reordering drives. The command runs without elevated privileges or an ingest token.
+
+```bash
+PYTHONPATH=src python3 -m pulse_agent --config private/agent.ini inventory
+```
+
+Disk profiles report the kernel-visible capacity in bytes, model and rotational flag when available. A missing or unsupported device returns `{"status":"unavailable"}` under its alias. Device paths and serial numbers are excluded. Virtual machines report the devices visible to the guest. The result is written locally to stdout for review.
 
 ## Delivery
 
@@ -34,6 +42,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_ingest_url` points at the private HTTP or HTTPS endpoint reachable through WireGuard.
 - `vault_pulse_agent_ingest_token` is unique for each host and comes from private encrypted inventory.
 - `pulse_agent_filesystems`, `pulse_agent_interfaces` and `pulse_agent_temperatures` map approved aliases to host resources.
+- `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 

@@ -1,14 +1,18 @@
+import io
 import json
 import logging
 import os
 import tempfile
 import threading
 import unittest
+from contextlib import redirect_stdout
+from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+from pulse_agent.cli import main
 from pulse_agent.collect import tick
 from pulse_agent.collectors import host, inventory
 from pulse_agent.config import Config, read_token
@@ -55,6 +59,52 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(profile["cpu"]["logicalCpuCount"], 2)
         self.assertNotIn("physicalCoreCount", profile["cpu"])
         self.assertNotIn("model", profile["cpu"])
+
+    def test_inventory_cli_reports_aliased_disks_without_local_identifiers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            (path / "cpuinfo").write_text("processor: 0\n")
+            (path / "meminfo").write_text("MemTotal: 8192 kB\n")
+            block_root = path / "block"
+            disk = block_root / "nvme0n1"
+            (disk / "device").mkdir(parents=True)
+            (disk / "queue").mkdir()
+            (disk / "size").write_text("1000\n")
+            (disk / "device/model").write_text("  Fixture SSD \n")
+            (disk / "device/serial").write_text("synthetic-serial\n")
+            (disk / "queue/logical_block_size").write_text("4096\n")
+            (disk / "queue/rotational").write_text("0\n")
+            (block_root / "loop0").mkdir()
+            (block_root / "loop0/size").write_text("1000\n")
+            config = path / "agent.ini"
+            config.write_text(
+                "[agent]\ningest_url = http://localhost/internal/v1/telemetry\n"
+                "[disks]\nsystem = nvme0n1\nmissing = sdb\nvirtual = loop0\n"
+            )
+            collect = partial(inventory.collect, proc=path, dmi=path / "dmi", block_root=block_root)
+            output = io.StringIO()
+            with patch("pulse_agent.cli.inventory.collect", side_effect=collect), redirect_stdout(output):
+                self.assertEqual(main(["--config", str(config), "inventory"]), 0)
+
+        self.assertEqual(json.loads(output.getvalue())["disks"], {
+            "system": {
+                "status": "available", "capacityBytes": 512_000, "model": "Fixture SSD", "rotational": False,
+            },
+            "missing": {"status": "unavailable"},
+            "virtual": {"status": "unavailable"},
+        })
+        self.assertNotIn("nvme0n1", output.getvalue())
+        self.assertNotIn("synthetic-serial", output.getvalue())
+
+    def test_config_rejects_paths_as_disk_names(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "agent.ini"
+            config.write_text(
+                "[agent]\ningest_url = http://localhost/internal/v1/telemetry\n"
+                "[disks]\nsystem = ../sda\n"
+            )
+            with self.assertRaisesRegex(ValueError, "Invalid block device name"):
+                Config.load(config)
 
     def test_host_sample_uses_explicit_aliases_and_units(self):
         with tempfile.TemporaryDirectory() as temp:

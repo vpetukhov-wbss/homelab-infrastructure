@@ -6,6 +6,7 @@ from .host import read_memory
 
 def collect(
     proc: Path = Path("/proc"), dmi: Path = Path("/sys/class/dmi/id"),
+    *, disks: dict[str, str] | None = None, block_root: Path = Path("/sys/block"),
 ) -> dict[str, object]:
     records = _cpu_records(proc / "cpuinfo")
     cpu = {"architecture": platform.machine(), "logicalCpuCount": len(records)}
@@ -29,11 +30,41 @@ def collect(
         if value:
             machine[field] = value
 
-    return {
+    profile: dict[str, object] = {
         "machine": machine,
         "cpu": cpu,
         "memory": {"osVisibleBytes": read_memory(proc)["totalBytes"]},
     }
+    if disks:
+        profile["disks"] = {alias: _disk(block_root / name) for alias, name in disks.items()}
+    return profile
+
+
+def _disk(path: Path) -> dict[str, object]:
+    try:
+        if not (path / "device").is_dir():
+            return {"status": "unavailable"}
+        capacity = int(_read_attribute(path / "size")) * 512  # Linux uses 512-byte sectors here.
+    except (OSError, ValueError):
+        return {"status": "unavailable"}
+    if capacity <= 0:
+        return {"status": "unavailable"}
+
+    disk: dict[str, object] = {"status": "available", "capacityBytes": capacity}
+    model = _label(_read_attribute(path / "device/model"))
+    if model:
+        disk["model"] = model
+    rotational = _read_attribute(path / "queue/rotational")
+    if rotational in {"0", "1"}:
+        disk["rotational"] = rotational == "1"
+    return disk
+
+
+def _read_attribute(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
 
 
 def _cpu_records(path: Path) -> list[dict[str, str]]:

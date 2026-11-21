@@ -13,7 +13,7 @@ from .transport import Transport
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="HomeLab Pulse Linux telemetry agent")
-    parser.add_argument("--config", type=Path, default=Path("/etc/pulse-agent/agent.ini"))
+    parser.add_argument("--config", type=Path, help="Agent configuration file")
     parser.add_argument("--token-file", type=Path, help="Path to a local credential file")
     parser.add_argument("command", choices=("sample", "inventory", "tick"))
     args = parser.parse_args(argv)
@@ -21,9 +21,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
         if args.command == "inventory":
-            print(json.dumps(inventory.collect(), indent=2))
+            disks = Config.load(args.config).disks if args.config else {}
+            print(json.dumps(inventory.collect(disks=disks), indent=2))
             return 0
-        settings = Config.load(args.config)
+        settings = Config.load(args.config or Path("/etc/pulse-agent/agent.ini"))
         if args.command == "sample":
             print(Sample.host(host.collect(settings)).encode().decode("utf-8"))
             return 0

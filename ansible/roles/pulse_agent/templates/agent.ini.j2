@@ -20,3 +20,8 @@ send_limit = 4
 {% for alias, path in pulse_agent_temperatures | dictsort %}
 {{ alias }} = {{ path }}
 {% endfor %}
+
+[disks]
+{% for alias, device in pulse_agent_disks | dictsort %}
+{{ alias }} = {{ device }}
+{% endfor %}

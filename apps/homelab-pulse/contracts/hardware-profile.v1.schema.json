@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HomeLab Pulse local hardware profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["machine", "cpu", "memory"],
+  "properties": {
+    "machine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "manufacturer": { "$ref": "#/$defs/label" },
+        "model": { "$ref": "#/$defs/label" }
+      }
+    },
+    "cpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["architecture", "logicalCpuCount"],
+      "properties": {
+        "architecture": { "$ref": "#/$defs/label" },
+        "logicalCpuCount": { "$ref": "#/$defs/positiveInteger" },
+        "physicalCoreCount": { "$ref": "#/$defs/positiveInteger" },
+        "model": { "$ref": "#/$defs/label" }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["osVisibleBytes"],
+      "properties": {
+        "osVisibleBytes": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "disks": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
+      "additionalProperties": { "$ref": "#/$defs/disk" }
+    }
+  },
+  "$defs": {
+    "label": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "positiveInteger": { "type": "integer", "minimum": 1 },
+    "disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "capacityBytes": { "$ref": "#/$defs/positiveInteger" },
+        "model": { "$ref": "#/$defs/label" },
+        "rotational": { "type": "boolean" }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": { "required": ["capacityBytes"] },
+      "else": { "maxProperties": 1 }
+    }
+  }
+}

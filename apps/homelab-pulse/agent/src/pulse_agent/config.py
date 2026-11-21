@@ -1,7 +1,7 @@
 import configparser
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -17,6 +17,7 @@ class Config:
     filesystems: dict[str, str]
     network: dict[str, str]
     temperatures: dict[str, str]
+    disks: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -43,14 +44,17 @@ class Config:
         filesystems = _aliases(parser, "filesystems")
         temperatures = _aliases(parser, "temperatures")
         network = _aliases(parser, "network")
+        disks = _aliases(parser, "disks")
         if not all(Path(value).is_absolute() for value in (*filesystems.values(), *temperatures.values())):
             raise ValueError("Filesystem and temperature paths must be absolute")
         if not all(re.fullmatch(r"[A-Za-z0-9_-]{1,15}", name) for name in network.values()):
             raise ValueError("Invalid interface name")
+        if not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name) for name in disks.values()):
+            raise ValueError("Invalid block device name")
 
         return cls(
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
-            timeout, max_pending, max_age, send_limit, filesystems, network, temperatures,
+            timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks,
         )
 
 
