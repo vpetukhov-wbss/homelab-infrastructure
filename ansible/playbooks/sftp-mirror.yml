@@ -1,6 +1,13 @@
 ---
-# node1 -> node3 SFTP mirror (lsyncd over the wg1 overlay).
+# 1. node3: restricted sync account + nightly local exports (SQLite, Gitea).
+# 2. node1 -> node3 SFTP mirror (lsyncd over the wg1 overlay), confined to rrsync.
 # Run AFTER edge.yml, so the bind-mounted SFTP tree already exists on node1.
+- name: Sync target and local exports (node3)
+  hosts: data_replica
+  gather_facts: true
+  roles:
+    - node_exports
+
 - name: SFTP mirror (node1 -> node3)
   hosts: edge
   gather_facts: true

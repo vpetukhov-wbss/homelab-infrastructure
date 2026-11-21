@@ -6,9 +6,19 @@ sftp_data_dir: /home/vpetukhov/stacks/edge/sftp_data
 # Mirror target = the node that is NOT holding the SFTP primary. Edge (and the SFTP
 # primary) lives on node1; node3 holds the standby copy on the fleet's biggest disk.
 mirror_target_host: node3-data
-mirror_target_dir: /home/vpetukhov/stacks/sftp-mirror/data
-mirror_target_user: vpetukhov
 mirror_target_ssh_port: 22
+
+# The target side (account, directories, rrsync) is set up by the node_exports role.
+# This key may ONLY run rrsync inside mirror_sync_data, as an account with no docker or
+# sudo membership. The same key is used by the backup job to pull exports and push
+# archive copies, all within that directory.
+mirror_sync_user: homelab-sync
+mirror_sync_root: /srv/homelab-sync
+mirror_sync_data: "{{ mirror_sync_root }}/data"
+mirror_target_subdir: sftp-mirror        # relative to mirror_sync_data (rrsync root)
+
+# Where the mirror lived before 2026-11-21 (as vpetukhov); migrated once if present.
+mirror_legacy_dir: /home/vpetukhov/stacks/sftp-mirror/data
 
 mirror_key_path: /etc/lsyncd/id_sftp_mirror
 mirror_log_dir: /var/log/lsyncd

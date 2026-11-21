@@ -1,0 +1,8 @@
+---
+# The config directory is bind-mounted whole, so a reload reads the new files. Settings
+# that need a restart show up as pending_restart, which the role then reports — a
+# primary is never restarted behind the operator's back.
+- name: reload postgres
+  ansible.builtin.command:
+    cmd: docker exec -u postgres postgres-primary psql -XAtc "select pg_reload_conf()"
+  changed_when: true

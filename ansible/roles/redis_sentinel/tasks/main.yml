@@ -1,20 +1,31 @@
 ---
-# Redis Sentinel (quorum 2 of 3) on each wired node, for automatic Redis failover.
+# Redis Sentinel (quorum 2 of 3) on each wired node. Requires `redis_current_master_ip`
+# from the redis_topology role, so a re-run never reverts a failover.
 - name: Create sentinel stack directory
   ansible.builtin.file:
     path: "{{ stack_dir }}"
     state: directory
     mode: "0750"
 
-# Sentinel rewrites its own config at runtime → must be writable by the container (uid 999).
-- name: Template sentinel.conf (container-writable)
-  ansible.builtin.template:
-    src: sentinel.conf.j2
-    dest: "{{ stack_dir }}/sentinel.conf"
+- name: Create the Sentinel-owned config directory
+  ansible.builtin.file:
+    path: "{{ sentinel_conf_dir }}"
+    state: directory
     owner: "999"
     group: "999"
-    mode: "0644"
+    mode: "0700"
   become: true
+
+- name: Seed sentinel.conf (only when absent; Sentinel owns it afterwards)
+  ansible.builtin.template:
+    src: sentinel.conf.j2
+    dest: "{{ sentinel_conf_dir }}/sentinel.conf"
+    owner: "999"
+    group: "999"
+    mode: "0600"
+    force: false
+  become: true
+  diff: false
 
 - name: Template sentinel docker-compose
   ansible.builtin.template:
@@ -28,3 +39,39 @@
     chdir: "{{ stack_dir }}"
   register: compose_up
   changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait until this Sentinel tracks the expected master
+  ansible.builtin.shell:
+    cmd: >
+      docker exec -e REDISCLI_AUTH redis-sentinel
+      redis-cli -p 26379 sentinel get-master-addr-by-name {{ sentinel_master_name }} | head -1
+  environment:
+    REDISCLI_AUTH: "{{ vault_redis_password }}"
+  register: sentinel_view
+  until: sentinel_view.stdout | trim == redis_current_master_ip
+  retries: 20
+  delay: 3
+  changed_when: false
+  become: true
+
+# Tunables live in Sentinel's own state; SENTINEL SET persists them via a config rewrite.
+- name: Apply Sentinel tunables at runtime
+  ansible.builtin.shell:
+    cmd: >
+      docker exec -e REDISCLI_AUTH redis-sentinel redis-cli -p 26379
+      sentinel set {{ sentinel_master_name }}
+      down-after-milliseconds {{ sentinel_down_after_ms }}
+      failover-timeout {{ sentinel_failover_timeout_ms }}
+      parallel-syncs {{ sentinel_parallel_syncs }}
+  environment:
+    REDISCLI_AUTH: "{{ vault_redis_password }}"
+  register: sentinel_set
+  failed_when: "'OK' not in sentinel_set.stdout"
+  changed_when: false
+  become: true
+
+- name: Remove the legacy single-file config (it held the Redis password at 0644)
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/sentinel.conf"
+    state: absent
+  become: true

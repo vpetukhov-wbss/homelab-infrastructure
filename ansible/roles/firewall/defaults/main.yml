@@ -1,0 +1,24 @@
+---
+# SSH is accepted from these sources and from wg1. Never "Anywhere": the router could
+# forward the port by mistake, and SSH must not face the Internet (CLAUDE.md).
+ssh_allowed_sources:
+  - "{{ lan_cidr | default('192.168.0.0/24') }}"
+
+# Overlay guard. Docker publishes container ports with DNAT rules that match the
+# destination address on ANY ingress interface, and that traffic never reaches ufw's
+# INPUT chain. Binding a port to 10.44.0.x therefore does NOT keep it off the LAN: a
+# LAN host only needs `ip route add 10.44.0.0/24 via <node LAN IP>` (verified
+# 2026-11-21: 14/14 overlay ports were reachable that way). The guard drops any packet
+# for the overlay subnet unless it arrived on one of the interfaces below.
+overlay_guard_cidr: "{{ wg_overlay_cidr | default('10.44.0.0/24') }}"
+overlay_guard_allowed_interfaces:
+  - wg1        # the overlay itself
+  - lo
+  - docker0    # containers on the default bridge
+  - br-+       # containers on compose/user bridges (iptables wildcard)
+
+# The overlay range also exists inside the ISP's network (10.44.0.1 answers from ~6
+# hops away). Without wg1, traffic for the overlay would follow the default route out
+# to the ISP. An unreachable route with a high metric makes it fail locally instead;
+# wg1's connected route (metric 0) wins whenever the tunnel is up.
+overlay_guard_unreachable_metric: 4000

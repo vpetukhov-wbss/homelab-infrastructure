@@ -8,11 +8,9 @@ f2b_maxretry: 5
 # Repeat offenders get progressively longer bans.
 f2b_bantime_increment: true
 f2b_bantime_maxtime: 1w
-# NEVER ban ourselves. The LAN carries the Ansible controller and the overlay carries
-# every inter-node connection; banning either would cut the fleet apart.
-f2b_ignoreip:
-  - 127.0.0.1/8
-  - ::1
-  - 192.168.0.0/24
-  - 10.44.0.0/24
-  - 10.10.10.0/24
+# NEVER ban ourselves: the overlay carries every inter-node connection and the
+# controller runs Ansible. But do NOT exempt the whole LAN — it is treated as hostile
+# (other subscribers' devices are visible on it), so scanners there must be bannable.
+f2b_ignoreip: >-
+  {{ ['127.0.0.1/8', '::1', wg_overlay_cidr | default('10.44.0.0/24')]
+     + ([controller_lan_ip ~ '/32'] if controller_lan_ip is defined else []) }}

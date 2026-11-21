@@ -1,14 +1,28 @@
 ---
 # ufw: default-deny, allow only SSH + WireGuard + overlay; edge also allows 80/443.
 # CRITICAL: SSH + WG allow rules are added BEFORE enabling ufw, so we never lock out.
-# DB ports are NOT opened here — DB containers bind only to the wg1 overlay IP (see data layer),
-# and Docker's port publishing is bound to 10.44.0.x so nothing lands on 0.0.0.0.
+# DB ports are NOT opened here. Containers publish them on the wg1 overlay IP, but that
+# alone does NOT keep them off the LAN (Docker DNAT bypasses ufw) — the overlay guard
+# at the end of this file is what does. See defaults/main.yml.
 
-- name: Allow current SSH port
+# SSH from the trusted sources only (wg1 is allowed wholesale further down). The
+# specific rules go in BEFORE the any-source rule is removed, so a running session —
+# including this play's own — is never cut.
+- name: Allow SSH from the trusted sources
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+    port: "{{ ansible_port | default(22) }}"
+    proto: tcp
+  loop: "{{ ssh_allowed_sources }}"
+  become: true
+
+- name: Remove the any-source SSH rule
   community.general.ufw:
     rule: allow
     port: "{{ ansible_port | default(22) }}"
     proto: tcp
+    delete: true
   become: true
 
 - name: Allow WireGuard overlay port
@@ -46,7 +60,65 @@
     policy: allow
   become: true
 
+# Nothing here routes between networks on purpose (the mesh is direct, Docker manages
+# its own FORWARD rules ahead of ufw's). node1 had drifted to "allow (routed)".
+- name: Default deny routed
+  community.general.ufw:
+    direction: routed
+    policy: deny
+  become: true
+
 - name: Enable ufw
   community.general.ufw:
     state: enabled
   become: true
+
+# --- Overlay guard -----------------------------------------------------------------
+- name: Install the overlay guard script
+  ansible.builtin.template:
+    src: homelab-overlay-guard.sh.j2
+    dest: /usr/local/sbin/homelab-overlay-guard
+    mode: "0755"
+  become: true
+  notify: restart overlay guard
+
+- name: Install the overlay guard unit
+  ansible.builtin.copy:
+    src: homelab-overlay-guard.service
+    dest: /etc/systemd/system/homelab-overlay-guard.service
+    mode: "0644"
+  become: true
+  notify: restart overlay guard
+
+- name: Enable and start the overlay guard
+  ansible.builtin.systemd:
+    name: homelab-overlay-guard
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+- name: Apply a pending guard restart before verifying
+  ansible.builtin.meta: flush_handlers
+
+# Verify the effective state, not the files we wrote.
+- name: Read the live raw-table rules and routes
+  ansible.builtin.shell:
+    cmd: |
+      iptables -w -t raw -S PREROUTING
+      iptables -w -t raw -S HOMELAB-OVERLAY-GUARD
+      ip route show type unreachable
+    executable: /bin/bash
+  register: overlay_guard_live
+  changed_when: false
+  become: true
+
+- name: Assert the overlay guard is live
+  ansible.builtin.assert:
+    that:
+      - "('-A PREROUTING -d ' ~ overlay_guard_cidr ~ ' -j HOMELAB-OVERLAY-GUARD') in overlay_guard_live.stdout"
+      - "'-A HOMELAB-OVERLAY-GUARD -i wg1 -j RETURN' in overlay_guard_live.stdout"
+      - "'-A HOMELAB-OVERLAY-GUARD -j DROP' in overlay_guard_live.stdout"
+      - "('unreachable ' ~ overlay_guard_cidr) in overlay_guard_live.stdout"
+    fail_msg: "overlay guard is NOT active on {{ inventory_hostname }}"
+    success_msg: "overlay guard active on {{ inventory_hostname }}"

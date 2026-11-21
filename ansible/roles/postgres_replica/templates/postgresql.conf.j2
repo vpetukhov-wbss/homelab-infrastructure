@@ -1,4 +1,5 @@
 # Managed by Ansible (homelab) — node3 Postgres STANDBY (hot replica)
+# WAL settings mirror the primary so this node is ready to take over after a promotion.
 listen_addresses = '*'
 port = 5432
 max_connections = 100
@@ -12,8 +13,21 @@ hot_standby = on
 hot_standby_feedback = on
 max_standby_streaming_delay = 30s
 
+# Used once promoted (and for pg_rewind of the old primary).
+wal_level = replica
+max_wal_senders = 5
+max_replication_slots = 5
+wal_compression = lz4
+wal_log_hints = on
+max_slot_wal_keep_size = 20GB
+max_wal_size = 4GB
+min_wal_size = 512MB
+checkpoint_timeout = 15min
+checkpoint_completion_target = 0.9
+
 random_page_cost = 4.0
 effective_io_concurrency = 2
 
 logging_collector = off
 log_min_duration_statement = 1000
+log_checkpoints = on

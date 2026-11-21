@@ -8,6 +8,9 @@
 # Roles are discovered at runtime, never assumed: Sentinel moves the Redis master and
 # a PostgreSQL promotion moves the primary, so hardcoding a host would silently start
 # backing up a read-only standby.
+#
+# Secrets never appear in argv (visible in `ps`): they are exported only for the
+# docker CLI call that needs them and passed through with a bare `-e NAME`.
 set -euo pipefail
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -15,106 +18,125 @@ DEST="{{ backup_dir }}"
 KEEP={{ backup_keep }}
 PASS_FILE="{{ backup_secrets_dir }}/backup.pass"
 ENV_FILE="{{ backup_secrets_dir }}/backup.env"
+OVERLAY_PREFIX="{{ (wg_overlay_cidr | default('10.44.0.0/24')).split('.')[:3] | join('.') }}."
 
 # shellcheck source=/dev/null
 . "$ENV_FILE"
 
 TMP="$(mktemp -d)"
-cleanup() { rm -rf "$TMP"; }
+STATUS=0
+OUT="$DEST/homelab-$STAMP.tar.gz.enc"
+cleanup() { rm -rf "$TMP"; rm -f "$OUT.part"; }
 trap cleanup EXIT
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
+in_overlay() { case "$1" in "$OVERLAY_PREFIX"*) return 0 ;; *) return 1 ;; esac; }
 
-# --- 1. locate the PostgreSQL primary -----------------------------------------
-PRIMARY=""
+pg() { PGPASSWORD="$PG_PASSWORD" docker run --rm -e PGPASSWORD "$@"; }
+
+# --- 1. locate the PostgreSQL primary — exactly one, or stop -------------------
+# After a promotion, the old primary can come back writable. Taking "the first host
+# that is not in recovery" would then silently dump stale data, so probe them all.
+PRIMARIES=""
+NPRIMARY=0
 for ip in {{ backup_pg_candidates | join(' ') }}; do
-  state="$(docker run --rm -e PGPASSWORD="$PG_PASSWORD" postgres:16 \
-            psql -h "$ip" -U postgres -d {{ backup_db_name }} -At \
+  state="$(pg {{ image_postgres }} psql -h "$ip" -U postgres -d {{ backup_db_name }} -At \
             -c 'select pg_is_in_recovery();' 2>/dev/null || true)"
-  if [ "$state" = "f" ]; then PRIMARY="$ip"; break; fi
+  if [ "$state" = "f" ]; then PRIMARIES="$PRIMARIES $ip"; NPRIMARY=$((NPRIMARY + 1)); fi
 done
-if [ -z "$PRIMARY" ]; then
-  log "FATAL: no PostgreSQL primary found among {{ backup_pg_candidates | join(' ') }}"
+if [ "$NPRIMARY" -ne 1 ]; then
+  log "FATAL: expected exactly one PostgreSQL primary, found $NPRIMARY:${PRIMARIES:- none}"
   exit 1
 fi
+PRIMARY="${PRIMARIES# }"
 log "PostgreSQL primary: $PRIMARY"
 
-# --- 2. dump PostgreSQL -------------------------------------------------------
+# --- 2. dump PostgreSQL: database + cluster globals (roles) --------------------
 # Custom format (-Fc) so pg_restore can do selective restores and parallel loads.
-docker run --rm -e PGPASSWORD="$PG_PASSWORD" -v "$TMP:/out" postgres:16 \
+# Roles live outside any database; without the globals a restore has no owners.
+pg -v "$TMP:/out" {{ image_postgres }} \
   pg_dump -h "$PRIMARY" -U postgres -d {{ backup_db_name }} -Fc -f /out/postgres.dump
 [ -s "$TMP/postgres.dump" ] || { log "FATAL: empty PostgreSQL dump"; exit 1; }
-log "PostgreSQL dump: $(du -h "$TMP/postgres.dump" | cut -f1)"
+pg -v "$TMP:/out" {{ image_postgres }} \
+  sh -c 'pg_dumpall -h "$1" -U postgres --globals-only > /out/postgres-globals.sql' _ "$PRIMARY"
+[ -s "$TMP/postgres-globals.sql" ] || { log "FATAL: empty PostgreSQL globals dump"; exit 1; }
+log "PostgreSQL dump: $(du -h "$TMP/postgres.dump" | cut -f1) + globals"
 
 # --- 3. locate the Redis master and snapshot it -------------------------------
-REDIS_MASTER="$(docker exec redis-sentinel redis-cli -p 26379 \
-                 sentinel get-master-addr-by-name homelab-redis 2>/dev/null | head -1)"
-if [ -z "$REDIS_MASTER" ]; then
-  log "FATAL: Sentinel did not report a Redis master"
+# Sentinel requires a password. Its answer decides where we send the Redis password
+# next, so refuse anything outside the overlay.
+REDIS_MASTER="$(REDISCLI_AUTH="$REDIS_PASSWORD" docker exec -e REDISCLI_AUTH redis-sentinel \
+                 redis-cli -p 26379 sentinel get-master-addr-by-name homelab-redis 2>/dev/null | head -1)"
+if [ -z "$REDIS_MASTER" ] || ! in_overlay "$REDIS_MASTER"; then
+  log "FATAL: Sentinel reported no usable Redis master ('$REDIS_MASTER')"
   exit 1
 fi
 log "Redis master: $REDIS_MASTER"
-docker run --rm -v "$TMP:/out" redis:7-alpine \
-  redis-cli -h "$REDIS_MASTER" -a "$REDIS_PASSWORD" --no-auth-warning \
-  --rdb /out/redis.rdb >/dev/null 2>&1
+REDISCLI_AUTH="$REDIS_PASSWORD" docker run --rm -e REDISCLI_AUTH -v "$TMP:/out" {{ image_redis }} \
+  redis-cli -h "$REDIS_MASTER" --rdb /out/redis.rdb >/dev/null 2>&1
 [ -s "$TMP/redis.rdb" ] || { log "FATAL: empty Redis snapshot"; exit 1; }
 log "Redis snapshot: $(du -h "$TMP/redis.rdb" | cut -f1)"
 
 # --- 4. RabbitMQ definitions (topology, not message bodies) -------------------
+# rabbitmqctl authenticates with the Erlang cookie, so no password is needed.
 if docker ps --filter name=rabbitmq --filter status=running -q | grep -q .; then
-  docker exec rabbitmq rabbitmqadmin -u "$RABBIT_USER" -p "$RABBIT_PASSWORD" \
-    export /tmp/definitions.json >/dev/null 2>&1 &&
+  docker exec rabbitmq rabbitmqctl -q export_definitions /tmp/definitions.json >/dev/null 2>&1 &&
   docker cp rabbitmq:/tmp/definitions.json "$TMP/rabbitmq-definitions.json" >/dev/null 2>&1 &&
   docker exec rabbitmq rm -f /tmp/definitions.json || log "WARN: RabbitMQ export failed"
 fi
 
-# --- 4b. SQLite databases from the app host ------------------------------------
-# `cp` on a live SQLite file can capture a torn write. `sqlite3 .backup` uses the
-# backup API and is safe while writers are active, so the snapshot is taken remotely
-# and only the result is fetched. Reuses the restricted lsyncd key.
-SQLITE_KEY="{{ backup_sqlite_ssh_key }}"
-SQLITE_HOST="{{ hostvars[backup_sqlite_host].wg_overlay_ip }}"
-SQLITE_DIR="{{ backup_sqlite_dir }}"
-if [ -r "$SQLITE_KEY" ]; then
-  mkdir -p "$TMP/sqlite"
-  DBS="$(ssh -i "$SQLITE_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-          -o ConnectTimeout=10 "vpetukhov@$SQLITE_HOST" \
-          "find '$SQLITE_DIR' -maxdepth 2 -type f \\( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \\) 2>/dev/null" || true)"
-  if [ -n "$DBS" ]; then
-    echo "$DBS" | while read -r db; do
-      [ -n "$db" ] || continue
-      name="$(basename "$db")"
-      ssh -i "$SQLITE_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-        "vpetukhov@$SQLITE_HOST" "sqlite3 '$db' \".backup '/tmp/bk-$name'\"" &&
-      scp -q -i "$SQLITE_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-        "vpetukhov@$SQLITE_HOST:/tmp/bk-$name" "$TMP/sqlite/$name" &&
-      ssh -i "$SQLITE_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-        "vpetukhov@$SQLITE_HOST" "rm -f '/tmp/bk-$name'" &&
-      log "SQLite snapshot: $name"
-    done
-  else
-    log "no SQLite databases found on $SQLITE_HOST (nothing to snapshot)"
+# --- 4b. node3's own exports (SQLite snapshots, Gitea dump) -------------------
+# node3 snapshots its stateful apps locally (node_exports role); this job only pulls
+# them, as an account confined to rrsync — it can no longer run commands on node3.
+SYNC_KEY="{{ backup_sync_key }}"
+SYNC_DEST="{{ backup_sync_user }}@{{ hostvars[backup_sync_host].wg_overlay_ip }}"
+SYNC_SSH="ssh -i $SYNC_KEY -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10"
+mkdir -p "$TMP/node3-exports"
+if rsync -a -e "$SYNC_SSH" "$SYNC_DEST:exports/current/" "$TMP/node3-exports/" 2>"$TMP/rsync.log"; then
+  exported_at="$(cat "$TMP/node3-exports/EXPORTED_AT" 2>/dev/null || echo unknown)"
+  age_h=$(( ( $(date +%s) - $(date -d "$exported_at" +%s 2>/dev/null || echo 0) ) / 3600 ))
+  log "node3 exports: $(find "$TMP/node3-exports" -type f | wc -l) file(s), exported $exported_at (${age_h}h ago)"
+  if [ "$age_h" -gt {{ backup_exports_max_age_hours }} ]; then
+    log "WARN: node3 exports are stale (> {{ backup_exports_max_age_hours }}h) — check homelab-exports.service there"
+    STATUS=1
   fi
 else
-  log "WARN: $SQLITE_KEY unreadable, skipping SQLite"
+  log "WARN: could not pull node3 exports: $(tr '\n' ' ' < "$TMP/rsync.log")"
+  STATUS=1
 fi
+rm -f "$TMP/rsync.log"
 
-# --- 5. archive and encrypt ---------------------------------------------------
+# --- 4c. local state with no other copy --------------------------------------
+# The SFTP mirror propagates deletes, so it is not a backup of the SFTP tree.
+tar -C "{{ backup_sftp_dir }}" -cf "$TMP/sftp-tree.tar" . && log "SFTP tree: $(du -h "$TMP/sftp-tree.tar" | cut -f1)"
+# This node's WireGuard identity (private keys — the archive is encrypted).
+tar -C /etc -cf "$TMP/etc-wireguard.tar" wireguard && log "WireGuard config: saved"
+
+# --- 5. archive and encrypt (to .part; only a verified archive gets its name) -
 # There is no disk encryption on these machines, so the archive is encrypted at rest.
-OUT="$DEST/homelab-$STAMP.tar.gz.enc"
 tar -C "$TMP" -czf - . \
-  | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$PASS_FILE" -out "$OUT"
-chmod 600 "$OUT"
+  | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$PASS_FILE" -out "$OUT.part"
+chmod 600 "$OUT.part"
 
 # --- 6. prove the archive actually decrypts -----------------------------------
 # An unverified backup is a guess. Decrypt and list it before trusting the run.
-if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass "file:$PASS_FILE" -in "$OUT" \
+if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass "file:$PASS_FILE" -in "$OUT.part" \
      | tar -tzf - >/dev/null 2>&1; then
   log "FATAL: archive failed verification, removing it"
-  rm -f "$OUT"
   exit 1
 fi
+mv "$OUT.part" "$OUT"
 log "verified: $OUT ($(du -h "$OUT" | cut -f1))"
+
+# --- 6b. second copy on another disk ------------------------------------------
+# node1's single 2008-era HDD must not hold the only copy. node3 keeps copies for a
+# fixed number of days and prunes them itself; this side never deletes there.
+if rsync -a -e "$SYNC_SSH" "$OUT" "$SYNC_DEST:backups/" 2>"$TMP/rsync.log"; then
+  log "off-node copy: $SYNC_DEST:backups/$(basename "$OUT")"
+else
+  log "WARN: off-node copy failed: $(tr '\n' ' ' < "$TMP/rsync.log")"
+  STATUS=1
+fi
 
 # --- 7. retention -------------------------------------------------------------
 # shellcheck disable=SC2012
@@ -124,3 +146,6 @@ ls -1t "$DEST"/homelab-*.tar.gz.enc 2>/dev/null | tail -n +$((KEEP + 1)) | while
 done
 
 log "done; $(ls -1 "$DEST"/homelab-*.tar.gz.enc 2>/dev/null | wc -l) archive(s) retained"
+
+# Archive written, but something was incomplete: fail the unit so it is noticed.
+exit "$STATUS"

@@ -1,9 +1,46 @@
 ---
-# Redis Sentinel on all 3 wired nodes (quorum 2 of 3). Requires Redis primary+replica up.
-- name: Redis Sentinels
+# Redis Sentinel on all 3 wired nodes (quorum 2 of 3). Requires Redis up.
+# 1. discover the live master (never assume node2), 2. roll one Sentinel at a time,
+# 3. prove the quorum is whole again.
+- name: Discover the current Redis master
   hosts: edge:data_primary:data_replica
+  gather_facts: false
+  roles:
+    - redis_topology
+
+- name: Redis Sentinels (one node at a time)
+  hosts: edge:data_primary:data_replica
+  serial: 1
   gather_facts: true
   vars:
     stack_dir: /home/vpetukhov/stacks/sentinel
   roles:
     - redis_sentinel
+
+- name: Verify the Sentinel quorum
+  hosts: edge:data_primary:data_replica
+  gather_facts: false
+  tasks:
+    - name: Wait until every Sentinel sees the other two
+      ansible.builtin.shell:
+        cmd: >
+          docker exec -e REDISCLI_AUTH redis-sentinel redis-cli -p 26379
+          sentinel master homelab-redis | paste -d= - - | sed -n 's/^num-other-sentinels=//p'
+      environment:
+        REDISCLI_AUTH: "{{ vault_redis_password }}"
+      register: other_sentinels
+      until: other_sentinels.stdout | trim == "2"
+      retries: 30
+      delay: 4
+      changed_when: false
+      become: true
+
+    - name: Sentinel quorum check
+      ansible.builtin.shell:
+        cmd: docker exec -e REDISCLI_AUTH redis-sentinel redis-cli -p 26379 sentinel ckquorum homelab-redis
+      environment:
+        REDISCLI_AUTH: "{{ vault_redis_password }}"
+      register: ckquorum
+      failed_when: "'OK' not in ckquorum.stdout"
+      changed_when: false
+      become: true

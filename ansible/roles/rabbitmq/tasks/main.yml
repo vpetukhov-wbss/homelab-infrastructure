@@ -1,6 +1,6 @@
 ---
 # RabbitMQ on the edge node. It lives here rather than on a data node because the
-# ThinkCentres have spinning disks: a broker with persistent queues competing with
+# The servers have spinning disks: a broker with persistent queues competing with
 # PostgreSQL for the same spindle is the worst placement available. node1's disk is
 # comparatively idle (Caddy, Vault and SFTP are all low-I/O).
 - name: Create the RabbitMQ stack directory

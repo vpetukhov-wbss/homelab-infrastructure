@@ -1,0 +1,30 @@
+# Managed by Ansible (homelab) — act_runner configuration on {{ inventory_hostname }}.
+# Labels here override the ones stored at registration; the daemon declares them to
+# Gitea on every start.
+log:
+  level: info
+
+runner:
+  file: .runner
+  # One job at a time: this node also runs the PostgreSQL standby and the Redis master.
+  capacity: 1
+  timeout: 3h
+  labels:
+{% for label in gitea_runner_labels %}
+    - "{{ label }}"
+{% endfor %}
+
+cache:
+  enabled: false
+
+container:
+  network: ""
+  privileged: false
+  # Every job container is capped, so a runaway build cannot push the databases on
+  # this host into the OOM killer.
+  options: "{{ gitea_runner_job_options }}"
+  valid_volumes: []
+  # "-" = do NOT mount the Docker socket into job containers. With the socket, any
+  # workflow (or a compromised third-party action) is root on this host.
+  docker_host: "-"
+  force_pull: false

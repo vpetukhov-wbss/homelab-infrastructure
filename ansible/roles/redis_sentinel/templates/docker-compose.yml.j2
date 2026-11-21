@@ -1,11 +1,14 @@
 # Managed by Ansible (homelab) — Redis Sentinel on {{ inventory_hostname }}
 services:
   redis-sentinel:
-    image: redis:7-alpine
+    image: {{ image_redis }}
     container_name: redis-sentinel
     restart: unless-stopped
-    command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
+    user: "999:999"
+    command: ["redis-sentinel", "/etc/redis-sentinel/sentinel.conf"]
     volumes:
-      - {{ stack_dir }}/sentinel.conf:/etc/redis/sentinel.conf
+      # A directory, not a file — see sentinel_conf_dir in defaults/main.yml.
+      - {{ sentinel_conf_dir }}:/etc/redis-sentinel
     ports:
       - "{{ wg_overlay_ip }}:26379:26379"
+    mem_limit: 64m

@@ -19,6 +19,15 @@
       KbdInteractiveAuthentication no
       PermitRootLogin no
       PubkeyAuthentication yes
+      # Nothing here needs a display, the agent or reverse tunnels; local -L forwards
+      # stay available for reaching overlay services from an admin session.
+      X11Forwarding no
+      AllowAgentForwarding no
+      AllowTcpForwarding local
+      MaxAuthTries 3
+      LoginGraceTime 30
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
     mode: "0644"
   become: true
   notify: restart ssh
@@ -53,6 +62,10 @@
       - "'kbdinteractiveauthentication no' in sshd_effective.stdout"
       - "'permitrootlogin no' in sshd_effective.stdout"
       - "'pubkeyauthentication yes' in sshd_effective.stdout"
+      - "'x11forwarding no' in sshd_effective.stdout"
+      - "'allowagentforwarding no' in sshd_effective.stdout"
+      - "'allowtcpforwarding local' in sshd_effective.stdout"
+      - "'maxauthtries 3' in sshd_effective.stdout"
     fail_msg: >-
       sshd is NOT key-only on {{ inventory_hostname }}. Another drop-in in
       /etc/ssh/sshd_config.d/ probably sorts earlier and wins — check for

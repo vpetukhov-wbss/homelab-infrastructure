@@ -1,0 +1,65 @@
+---
+# Discover the CURRENT Redis master from the live Sentinels, before anything templates
+# a Redis or Sentinel config. Failover moves the master; templating a role from the
+# inventory (node2 = master) would revert it. Sets `redis_current_master_ip`.
+#
+# Works whether or not the Sentinels already require a password (migration-safe), and
+# never puts the password on a command line: it travels in REDISCLI_AUTH via the task
+# environment and `docker exec -e REDISCLI_AUTH`.
+
+- name: Ask every running Sentinel for the current master
+  ansible.builtin.shell:
+    cmd: |
+      docker ps --format '{{ "{{" }}.Names{{ "}}" }}' | grep -qx redis-sentinel || exit 0
+      out=$(docker exec redis-sentinel redis-cli -p 26379 sentinel get-master-addr-by-name {{ redis_master_name }} 2>&1 || true)
+      case "$out" in *NOAUTH*|*"Authentication required"*)
+        out=$(docker exec -e REDISCLI_AUTH redis-sentinel redis-cli -p 26379 sentinel get-master-addr-by-name {{ redis_master_name }} 2>&1 || true) ;;
+      esac
+      printf '%s\n' "$out" | head -1 | grep -E '^[0-9.]+$' || true
+    executable: /bin/bash
+  environment:
+    REDISCLI_AUTH: "{{ vault_redis_password }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ redis_sentinel_hosts }}"
+  run_once: true
+  become: true
+  changed_when: false
+  register: sentinel_answers
+  no_log: true
+
+- name: Collect the answers
+  ansible.builtin.set_fact:
+    redis_master_answers: "{{ sentinel_answers.results | map(attribute='stdout') | map('trim') | select | unique | list }}"
+    redis_answering_sentinels: "{{ sentinel_answers.results | map(attribute='stdout') | map('trim') | select | list | length }}"
+
+- name: Sentinels must agree on a single master
+  ansible.builtin.assert:
+    that: redis_master_answers | length <= 1
+    fail_msg: "Sentinels disagree on the Redis master: {{ redis_master_answers }} — resolve by hand before deploying"
+
+- name: Settle on the current master
+  ansible.builtin.set_fact:
+    redis_current_master_ip: "{{ redis_master_answers[0] if redis_master_answers | length == 1 else redis_bootstrap_master_ip }}"
+
+- name: Confirm with Redis itself that it is the master
+  ansible.builtin.shell:
+    cmd: >
+      docker exec -e REDISCLI_AUTH redis-sentinel
+      redis-cli -h {{ redis_current_master_ip }} -p 6379 info replication | tr -d '\r' | grep -x 'role:master'
+    executable: /bin/bash
+  environment:
+    REDISCLI_AUTH: "{{ vault_redis_password }}"
+  delegate_to: "{{ redis_sentinel_hosts[0] }}"
+  run_once: true
+  become: true
+  changed_when: false
+  when: redis_master_answers | length == 1
+  no_log: true
+
+- name: Report the topology
+  ansible.builtin.debug:
+    msg: >-
+      Redis master is {{ redis_current_master_ip }}
+      ({{ redis_answering_sentinels }}/{{ redis_sentinel_hosts | length }} Sentinels answered;
+      {{ 'confirmed by Redis' if redis_master_answers | length == 1 else 'fresh cluster, using bootstrap master' }})
+  run_once: true

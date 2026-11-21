@@ -1,4 +1,12 @@
 ---
+# Redis roles are discovered from the live Sentinels first, never assumed from the
+# inventory: a failover moves the master, and seeding from the inventory would revert it.
+- name: Discover the current Redis master
+  hosts: edge:data_primary:data_replica
+  gather_facts: false
+  roles:
+    - redis_topology
+
 # node3: Postgres STANDBY + Redis REPLICA. Requires overlay up + primary deployed.
 - name: Data-replica stack (node3)
   hosts: data_replica

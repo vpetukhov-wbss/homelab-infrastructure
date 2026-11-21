@@ -1,0 +1,7 @@
+---
+- name: restart overlay guard
+  ansible.builtin.systemd:
+    name: homelab-overlay-guard
+    state: restarted
+    daemon_reload: true
+  become: true

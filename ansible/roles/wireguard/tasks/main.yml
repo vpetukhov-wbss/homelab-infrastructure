@@ -1,5 +1,5 @@
 ---
-# WireGuard overlay mesh (wg1 / 10.44.0.0/24) across the 3 wired ThinkCentres.
+# WireGuard overlay mesh (wg1 / 10.44.0.0/24) across the three wired servers.
 # Single play over all 3 hosts: linear strategy means every host's pubkey fact is
 # set before the template task runs, so the mesh config can reference all peers.
 
@@ -21,6 +21,7 @@
     src: /etc/wireguard/wg1.private
   register: wg_priv_raw
   become: true
+  no_log: true
 
 - name: Derive public key
   ansible.builtin.shell: "wg pubkey < /etc/wireguard/wg1.private"
@@ -32,13 +33,16 @@
   ansible.builtin.set_fact:
     wg_private_key: "{{ wg_priv_raw.content | b64decode | trim }}"
     wg_public_key: "{{ wg_pub.stdout | trim }}"
+  no_log: true
 
+# diff: false — `--diff` would otherwise print the private key into the run output.
 - name: Template wg1.conf (full mesh)
   ansible.builtin.template:
     src: wg1.conf.j2
     dest: /etc/wireguard/wg1.conf
     mode: "0600"
   become: true
+  diff: false
   notify: restart wg1
 
 - name: Enable + start wg1

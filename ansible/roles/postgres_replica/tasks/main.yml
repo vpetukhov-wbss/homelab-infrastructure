@@ -28,7 +28,7 @@
       docker run --rm --user 999:999
       -e PGPASSWORD='{{ vault_pg_replicator_password }}'
       -v {{ stack_dir }}/pgdata:/data
-      postgres:16 bash -lc '
+      {{ image_postgres }} bash -lc '
       pg_basebackup -h {{ hostvars["node2"].wg_overlay_ip }} -p 5432 -U replicator -D /data -Fp -Xs -S node3_slot -w -P &&
       touch /data/standby.signal &&
       printf "primary_conninfo = %s\nprimary_slot_name = %s\n"
@@ -39,27 +39,34 @@
   when: not pgdata_seeded.stat.exists
   no_log: true
 
-- name: Template replica configs (container-readable)
+# Bind-mounted as a whole directory, so a reload sees the new files.
+- name: Create the PostgreSQL config directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/pgconf"
+    state: directory
+    mode: "0755"
+
+- name: Template replica PostgreSQL config + pg_hba (container-readable)
   ansible.builtin.template:
     src: "{{ item }}"
-    dest: "{{ stack_dir }}/{{ item | replace('.j2','') }}"
+    dest: "{{ stack_dir }}/pgconf/{{ item | replace('.j2','') }}"
     mode: "0644"
   loop:
     - postgresql.conf.j2
-    - redis.conf.j2
+    - pg_hba.conf.j2
+  notify: reload postgres
 
 - name: Template docker-compose (host-only, 0640)
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "{{ stack_dir }}/docker-compose.yml"
     mode: "0640"
+  diff: false
 
-- name: Deploy the data-replica stack
-  ansible.builtin.command:
-    cmd: docker compose up -d
-    chdir: "{{ stack_dir }}"
-  register: compose_up
-  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+- name: Redis config, stack deployment and replication role
+  ansible.builtin.include_tasks: "{{ role_path }}/../postgres_primary/tasks/redis.yml"
+  vars:
+    redis_container: redis-replica
 
 - name: Wait for the standby to accept read-only connections
   ansible.builtin.command:
@@ -69,3 +76,43 @@
   retries: 30
   delay: 5
   changed_when: false
+
+# --- Verify the effective state, not the files written ---------------------------
+- name: Apply pending config reloads before verifying
+  ansible.builtin.meta: flush_handlers
+
+- name: Read the effective standby settings
+  ansible.builtin.command:
+    cmd: >
+      docker exec -u postgres postgres-replica psql -XAt -c
+      "select name || '=' || setting from pg_settings
+       where name in ('wal_log_hints','max_slot_wal_keep_size','hba_file')
+       union all select 'pending_restart=' || count(*) from pg_settings where pending_restart
+       union all select 'in_recovery=' || pg_is_in_recovery()"
+  register: pg_effective
+  changed_when: false
+
+- name: Assert the standby runs the templated config
+  ansible.builtin.assert:
+    that:
+      - "'wal_log_hints=on' in pg_effective.stdout_lines"
+      - "'hba_file=/etc/postgresql/pg_hba.conf' in pg_effective.stdout_lines"
+      - "'pending_restart=0' in pg_effective.stdout_lines"
+      - "'in_recovery=true' in pg_effective.stdout_lines"
+    fail_msg: "standby is not running the templated config: {{ pg_effective.stdout_lines }}"
+    success_msg: "{{ pg_effective.stdout_lines | join(', ') }}"
+
+# pg_isready passes on a standby that is not replicating; this does not.
+- name: Wait until the standby is streaming from the primary
+  ansible.builtin.command:
+    cmd: docker exec -u postgres postgres-replica psql -XAtc "select status from pg_stat_wal_receiver"
+  register: pg_receiver
+  until: pg_receiver.stdout == 'streaming'
+  retries: 20
+  delay: 3
+  changed_when: false
+
+- name: Remove the legacy single-file config (now under pgconf/)
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/postgresql.conf"
+    state: absent

@@ -1,0 +1,6 @@
+---
+# See postgres_primary/handlers: reload reads the new files from the mounted directory.
+- name: reload postgres
+  ansible.builtin.command:
+    cmd: docker exec -u postgres postgres-replica psql -XAtc "select pg_reload_conf()"
+  changed_when: true

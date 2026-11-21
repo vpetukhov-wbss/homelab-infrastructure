@@ -16,3 +16,9 @@ edge_app_backend_port: 8080
 edge_gitea_host: node3-data
 edge_gitea_port: 3000
 edge_gitea_prefix: /git
+
+# Vault stays on loopback until a human has run `vault operator init` and stored the
+# unseal keys offline: whoever initialises a reachable, uninitialised Vault owns it.
+# Set this to "{{ wg_overlay_ip }}" (host_vars) only after init. Init, on node1:
+#   docker exec -it vault vault operator init -address=https://127.0.0.1:8200 -ca-cert=/vault/tls/vault.crt
+vault_publish_ip: 127.0.0.1

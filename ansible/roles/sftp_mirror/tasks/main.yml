@@ -2,11 +2,10 @@
 # node1 -> node3 SFTP mirror with lsyncd (inotify + rsync over SSH on the wg1 overlay).
 # node1 stays authoritative; node3 keeps a warm copy on the biggest disk in the fleet.
 #
-# Trust model: this installs a DEDICATED keypair, generated on node1 and used only by
-# lsyncd. The public half is restricted in node3's authorized_keys to connections from
-# node1's overlay IP with no pty/forwarding. Optional further hardening (not done here,
-# to avoid depending on rrsync's path differing across 22.04/24.04): wrap it in a
-# command="…/rrsync -ro {{ mirror_target_dir }}" forced command.
+# Trust model: a DEDICATED keypair, generated on node1. On node3 it is accepted only
+# from node1's overlay IP, only for the unprivileged {{ mirror_sync_user }} account, and
+# only as `rrsync {{ mirror_sync_data }}` — no shell, no forwarding. The account and its
+# directories come from the node_exports role (run it on the target first).
 
 - name: Install lsyncd and rsync
   ansible.builtin.apt:
@@ -17,15 +16,6 @@
     update_cache: true
     cache_valid_time: 3600
   become: true
-
-- name: Ensure rsync is present on the mirror target
-  ansible.builtin.apt:
-    name: rsync
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  become: true
-  delegate_to: "{{ mirror_target_host }}"
 
 - name: Ensure the lsyncd config and log directories exist
   ansible.builtin.file:
@@ -47,16 +37,6 @@
     mode: "0755"
   become: true
 
-- name: Create the mirror target directory on the replica
-  ansible.builtin.file:
-    path: "{{ mirror_target_dir }}"
-    state: directory
-    owner: "{{ mirror_target_user }}"
-    group: "{{ mirror_target_user }}"
-    mode: "0750"
-  become: true
-  delegate_to: "{{ mirror_target_host }}"
-
 - name: Generate the dedicated lsyncd SSH key (once)
   community.crypto.openssh_keypair:
     path: "{{ mirror_key_path }}"
@@ -66,13 +46,42 @@
   become: true
   register: mirror_key
 
-- name: Authorize the lsyncd key on the replica (restricted to node1's overlay IP)
+# Root-owned and outside the rrsync root, so the key cannot rewrite its own restrictions.
+- name: Authorize the key on the target — rrsync only, from this node's overlay IP
+  ansible.builtin.copy:
+    dest: "{{ mirror_sync_root }}/.ssh/authorized_keys"
+    content: |
+      # Managed by Ansible (homelab) — {{ inventory_hostname }} lsyncd + backup
+      restrict,from="{{ wg_overlay_ip }}",command="/usr/bin/rrsync {{ mirror_sync_data }}" {{ mirror_key.public_key }}
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  delegate_to: "{{ mirror_target_host }}"
+
+# Before 2026-11-21 this key logged in as vpetukhov (root via the docker group).
+- name: Revoke the key's old access as vpetukhov
   ansible.posix.authorized_key:
-    user: "{{ mirror_target_user }}"
+    user: vpetukhov
     key: "{{ mirror_key.public_key }}"
-    key_options: >-
-      from="{{ wg_overlay_ip }}",no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding
-    state: present
+    state: absent
+  become: true
+  delegate_to: "{{ mirror_target_host }}"
+
+- name: Migrate the legacy mirror directory once (only into an empty target)
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      T="{{ mirror_sync_data }}/{{ mirror_target_subdir }}"
+      [ -d "{{ mirror_legacy_dir }}" ] || { echo "no legacy dir"; exit 0; }
+      [ -z "$(ls -A "$T")" ] || { echo "target not empty - skipped"; exit 0; }
+      rsync -a "{{ mirror_legacy_dir }}/" "$T/"
+      chown -R {{ mirror_sync_user }}:{{ mirror_sync_user }} "$T"
+      echo migrated
+    executable: /bin/bash
+  register: mirror_migration
+  changed_when: "'migrated' in mirror_migration.stdout"
+  become: true
   delegate_to: "{{ mirror_target_host }}"
 
 # lsyncd runs as root, and the ssh options it hands to rsync do not reliably carry
@@ -116,6 +125,16 @@
   ansible.builtin.meta: flush_handlers
 
 # --- verification -------------------------------------------------------------
+- name: The key must NOT be able to run a shell command on the target
+  ansible.builtin.command:
+    cmd: >
+      ssh -i {{ mirror_key_path }} -o BatchMode=yes -o StrictHostKeyChecking=yes
+      {{ mirror_sync_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }} id
+  register: mirror_shell_probe
+  changed_when: false
+  failed_when: mirror_shell_probe.rc == 0 or 'uid=' in mirror_shell_probe.stdout
+  become: true
+
 - name: Drop a canary file into the SFTP tree
   ansible.builtin.copy:
     content: "lsyncd mirror canary {{ ansible_date_time.iso8601 }}\n"
@@ -126,16 +145,19 @@
   become: true
 
 - name: Wait for the canary to land on the replica
-  ansible.builtin.stat:
-    path: "{{ mirror_target_dir }}/.mirror-canary"
+  ansible.builtin.command:
+    cmd: cat {{ mirror_sync_data }}/{{ mirror_target_subdir }}/.mirror-canary
   register: canary
-  until: canary.stat.exists
+  until: canary.rc == 0 and ansible_date_time.iso8601 in canary.stdout
   retries: 12
   delay: 5
+  changed_when: false
+  become: true
   delegate_to: "{{ mirror_target_host }}"
 
 - name: Report mirror status
   ansible.builtin.debug:
     msg: >-
       SFTP mirror live: {{ sftp_data_dir }} on {{ inventory_hostname }}
-      -> {{ mirror_target_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }}:{{ mirror_target_dir }}
+      -> {{ mirror_sync_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }}:{{ mirror_target_subdir }}
+      (rrsync-confined; shell access refused: {{ (mirror_shell_probe.stderr | default('') | trim)[:80] }})

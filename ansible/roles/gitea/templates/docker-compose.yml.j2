@@ -2,12 +2,12 @@
 # Moved off the laptop: a laptop is Wi-Fi, suspends and is memory-pressured, which are
 # all poor properties for a service. This node has the largest disk for repositories.
 #
-# Both listeners bind the overlay address ONLY. Docker's port rules are evaluated
-# before ufw's INPUT chain, so this binding — not the firewall — keeps Gitea off the
-# LAN. The web UI is reached through Caddy on the edge.
+# Both listeners bind the overlay address. Docker's port rules are evaluated before
+# ufw's INPUT chain, so on its own that binding does NOT keep Gitea off the LAN — the
+# overlay guard (firewall role) does. The web UI is reached through Caddy on the edge.
 services:
   gitea:
-    image: gitea/gitea:1.22
+    image: {{ gitea_image }}
     container_name: gitea
     restart: unless-stopped
     environment:
@@ -29,20 +29,21 @@ services:
     ports:
       - "{{ wg_overlay_ip }}:{{ gitea_http_port }}:3000"
       - "{{ wg_overlay_ip }}:{{ gitea_ssh_port }}:22"
+    mem_limit: 768m
 
   act_runner:
-    image: gitea/act_runner:latest
+    image: {{ gitea_runner_image }}
     container_name: act_runner
     restart: unless-stopped
     depends_on:
       - gitea
     environment:
-      GITEA_INSTANCE_URL: "http://{{ wg_overlay_ip }}:{{ gitea_http_port }}"
+      GITEA_INSTANCE_URL: "{{ gitea_runner_instance_url }}"
+      CONFIG_FILE: /data/config.yaml
     volumes:
       - {{ stack_dir }}/runner-data:/data
-      # SECURITY: this grants CI jobs root-equivalent control of this host, which also
-      # runs the PostgreSQL standby and the application host. Acceptable only while
-      # every workflow here is first-party code. Revisit before running anything
-      # third-party — a rootless or DinD runner would be needed instead.
+      # The runner DAEMON needs the socket to start job containers. Jobs themselves do
+      # not get it (container.docker_host "-" in config.yaml) and are resource-capped.
+      # The daemon is first-party code; a job would need a container escape to reach it.
       - /var/run/docker.sock:/var/run/docker.sock
-    mem_limit: 1024m
+    mem_limit: 256m

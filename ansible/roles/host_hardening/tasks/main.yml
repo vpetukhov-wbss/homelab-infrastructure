@@ -1,0 +1,252 @@
+---
+# Host-level reliability and hygiene shared by every server. Each section verifies the
+# effective state rather than trusting the files it wrote.
+
+# --- Disk health ---------------------------------------------------------------
+- name: Install smartmontools
+  ansible.builtin.apt:
+    name: smartmontools
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Configure smartd (all disks, scheduled self-tests, temperature warnings)
+  ansible.builtin.copy:
+    dest: /etc/smartd.conf
+    content: |
+      # Managed by Ansible (homelab). Warnings go to the journal (no MTA here).
+      DEVICESCAN -a -o on -S on -n standby,q -s {{ smartd_schedule }} -W 4,45,55 -m root -M exec /usr/share/smartmontools/smartd-runner
+    mode: "0644"
+  become: true
+  register: smartd_conf
+
+- name: Enable and (re)start smartd
+  ansible.builtin.systemd:
+    name: smartmontools
+    enabled: true
+    state: "{{ 'restarted' if smartd_conf.changed else 'started' }}"
+  become: true
+
+- name: Read SMART health of every disk
+  ansible.builtin.shell:
+    cmd: |
+      for d in $(lsblk -dno NAME,TYPE | awk '$2=="disk"{print $1}'); do
+        h=$(smartctl -H /dev/$d 2>/dev/null | sed -n 's/.*overall-health self-assessment test result: //p')
+        a=$(smartctl -A /dev/$d 2>/dev/null | awk '$1==5{r=$10} $1==9{h=$10} $1==197{p=$10} $1==198{u=$10} $1==194{t=$10} END{printf "reallocated=%s pending=%s uncorrectable=%s power_on_h=%s temp=%s", r,p,u,h,t}')
+        echo "/dev/$d $(lsblk -dno MODEL /dev/$d | xargs): health=${h:-n/a} $a"
+      done
+    executable: /bin/bash
+  register: smart_health
+  changed_when: false
+  become: true
+
+- name: Report disk health
+  ansible.builtin.debug:
+    var: smart_health.stdout_lines
+
+# --- Hardware watchdog -----------------------------------------------------------
+# NOT /etc/modules-load.d: systemd-modules-load honours Ubuntu's watchdog blacklist,
+# so the driver silently never loaded at boot (found by rebooting node1, 2026-11-21).
+# An explicit modprobe ignores the blacklist; systemd picks the device up on its next
+# watchdog ping.
+- name: Remove the ineffective modules-load.d entry
+  ansible.builtin.file:
+    path: /etc/modules-load.d/homelab-watchdog.conf
+    state: absent
+  become: true
+
+- name: Load the watchdog driver now
+  community.general.modprobe:
+    name: "{{ watchdog_module }}"
+    state: present
+  become: true
+  failed_when: false
+
+- name: Is a hardware watchdog device available?
+  ansible.builtin.stat:
+    path: /dev/watchdog0
+  register: watchdog_hw
+
+# Some BIOSes lock the TCO timer ("unable to reset NO_REBOOT flag" — node3's Dell).
+# softdog then covers userspace/systemd hangs; hardlockup_panic + kernel.panic cover
+# a frozen kernel.
+- name: Fall back to the software watchdog when the hardware one is locked
+  community.general.modprobe:
+    name: softdog
+    state: present
+  become: true
+  when: not watchdog_hw.stat.exists
+
+- name: Is a watchdog device available now?
+  ansible.builtin.stat:
+    path: /dev/watchdog0
+  register: watchdog_dev
+
+- name: Load the chosen watchdog driver at every boot
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/homelab-watchdog-module.service
+    content: |
+      # Managed by Ansible (homelab) — see roles/host_hardening/tasks/main.yml
+      [Unit]
+      Description=Load the watchdog driver despite Ubuntu's blacklist (homelab)
+      DefaultDependencies=no
+      After=systemd-modules-load.service
+      Before=sysinit.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/sbin/modprobe {{ watchdog_module if watchdog_hw.stat.exists else 'softdog' }}
+
+      [Install]
+      WantedBy=sysinit.target
+    mode: "0644"
+  become: true
+  when: watchdog_dev.stat.exists
+
+- name: Enable the watchdog module loader
+  ansible.builtin.systemd:
+    name: homelab-watchdog-module.service
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: watchdog_dev.stat.exists
+
+- name: Create the systemd drop-in directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/systemd/system.conf.d
+    - /etc/systemd/system/docker.service.d
+  become: true
+
+- name: Let systemd feed the watchdog (reboot if the system stops responding)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system.conf.d/10-homelab-watchdog.conf
+    content: |
+      # Managed by Ansible (homelab)
+      [Manager]
+      RuntimeWatchdogSec={{ watchdog_runtime_sec }}
+      RebootWatchdogSec=10min
+    mode: "0644"
+  become: true
+  when: watchdog_dev.stat.exists
+  register: watchdog_conf
+
+- name: Re-execute systemd so it starts feeding the watchdog
+  ansible.builtin.systemd:
+    daemon_reexec: true
+  become: true
+  when: watchdog_conf is changed
+
+- name: Read the effective watchdog state
+  ansible.builtin.shell:
+    cmd: |
+      echo "device=$( [ -e /dev/watchdog0 ] && echo present || echo absent)"
+      echo "identity=$(cat /sys/class/watchdog/watchdog0/identity 2>/dev/null || echo none)"
+      echo "systemd_runtime_watchdog=$(systemctl show -p RuntimeWatchdogUSec --value)"
+    executable: /bin/bash
+  register: watchdog_state
+  changed_when: false
+  become: true
+
+- name: Report the watchdog state
+  ansible.builtin.debug:
+    var: watchdog_state.stdout_lines
+
+# --- Kernel tunables ---------------------------------------------------------------
+- name: Kernel and VM tunables (all servers)
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/90-homelab.conf
+    sysctl_set: true
+    state: present
+  loop: "{{ sysctl_common | dict2items }}"
+  become: true
+
+- name: Kernel tunables for Redis hosts
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/90-homelab.conf
+    sysctl_set: true
+    state: present
+  loop: "{{ sysctl_redis_hosts | dict2items }}"
+  become: true
+  when: "'data_primary' in group_names or 'data_replica' in group_names"
+
+# --- Docker daemon -----------------------------------------------------------------
+- name: Is Docker installed?
+  ansible.builtin.stat:
+    path: /usr/bin/dockerd
+  register: dockerd_bin
+
+- name: Docker daemon config and ordering
+  when: dockerd_bin.stat.exists
+  block:
+    # node1 keeps its images and volumes on a separate data root; never move it silently.
+    - name: Read Docker's current data root
+      ansible.builtin.command:
+        cmd: docker info --format '{{ "{{" }}.DockerRootDir{{ "}}" }}'
+      register: docker_root
+      changed_when: false
+      become: true
+
+    - name: Template daemon.json (log rotation, live-restore, data root preserved)
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        content: "{{ docker_daemon | to_nice_json }}\n"
+        mode: "0644"
+      vars:
+        docker_daemon_base:
+          log-driver: json-file
+          log-opts:
+            max-size: "{{ docker_log_max_size }}"
+            max-file: "{{ docker_log_max_file | string }}"
+          # Containers keep running while dockerd restarts (upgrades, config reloads).
+          live-restore: true
+          storage-driver: overlay2
+        docker_daemon: >-
+          {{ docker_daemon_base | combine({'data-root': docker_root.stdout | trim})
+             if (docker_root.stdout | trim) != '/var/lib/docker' else docker_daemon_base }}
+      become: true
+      register: daemon_json
+
+    # SIGHUP applies live-restore; log options apply to containers created afterwards.
+    - name: Reload dockerd (no container restarts)
+      ansible.builtin.systemd:
+        name: docker
+        state: reloaded
+      become: true
+      when: daemon_json.changed
+
+    # Containers publish on the overlay IP; start Docker after wg1 and the guard.
+    - name: Order Docker after WireGuard and the overlay guard
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.service.d/10-homelab-overlay.conf
+        content: |
+          # Managed by Ansible (homelab)
+          [Unit]
+          After=wg-quick@wg1.service homelab-overlay-guard.service
+          Wants=wg-quick@wg1.service
+        mode: "0644"
+      become: true
+      register: docker_dropin
+
+    - name: Reload systemd units
+      ansible.builtin.systemd:
+        daemon_reload: true
+      become: true
+      when: docker_dropin.changed
+
+    - name: Verify the effective Docker settings
+      ansible.builtin.command:
+        cmd: docker info --format '{{ "{{" }}.LoggingDriver{{ "}}" }} live_restore={{ "{{" }}.LiveRestoreEnabled{{ "}}" }} root={{ "{{" }}.DockerRootDir{{ "}}" }}'
+      register: docker_effective
+      changed_when: false
+      failed_when: "'json-file live_restore=true' not in docker_effective.stdout"
+      become: true

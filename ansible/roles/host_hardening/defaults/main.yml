@@ -1,0 +1,23 @@
+---
+# Every server disk is a 10-15 year old HDD. smartd watches them; short self-test daily
+# at 02:00, long test Saturdays at 03:00 (adds I/O for ~1-2 h on a quiet night).
+smartd_schedule: "(S/../.././02|L/../../6/03)"
+
+# Nodes have "vanished" — journal ends mid-stream, back only after a power cycle. If the
+# cause is a kernel hang, a hardware watchdog turns days of outage into one reboot.
+# Ubuntu blacklists watchdog drivers, so the Intel TCO driver is loaded explicitly.
+watchdog_module: iTCO_wdt
+watchdog_runtime_sec: 60
+
+sysctl_common:
+  vm.swappiness: 10              # databases on HDD: keep their pages in RAM
+  kernel.panic: 10               # reboot 10 s after a panic instead of hanging forever
+  kernel.softlockup_panic: 1     # a CPU stuck in the kernel is a panic, then a reboot
+  kernel.hardlockup_panic: 1     # same for a CPU stuck with interrupts off (NMI detector)
+# Redis forks for AOF rewrites and replication; with the default heuristic the fork can
+# fail under memory pressure (Redis logs a warning about exactly this).
+sysctl_redis_hosts:
+  vm.overcommit_memory: 1
+
+docker_log_max_size: 10m
+docker_log_max_file: 3

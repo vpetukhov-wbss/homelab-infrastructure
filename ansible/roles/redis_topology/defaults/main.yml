@@ -1,0 +1,5 @@
+---
+redis_master_name: homelab-redis
+redis_sentinel_hosts: "{{ groups['edge'] + groups['data_primary'] + groups['data_replica'] }}"
+# Only used when no Sentinel is running yet (a brand-new cluster).
+redis_bootstrap_master_ip: "{{ hostvars[groups['data_primary'][0]].wg_overlay_ip }}"

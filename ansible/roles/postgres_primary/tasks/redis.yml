@@ -1,0 +1,74 @@
+---
+# Redis on this data node. Shared by postgres_primary and postgres_replica
+# (include it with `redis_container` set). Needs `redis_current_master_ip` from the
+# redis_topology role.
+- name: Create the Redis-owned config directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/redis"
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: "0700"
+  become: true
+
+- name: Seed redis.conf (only when absent; Redis/Sentinel own it afterwards)
+  ansible.builtin.template:
+    src: "{{ role_path }}/../postgres_primary/templates/redis.conf.j2"
+    dest: "{{ stack_dir }}/redis/redis.conf"
+    owner: "999"
+    group: "999"
+    mode: "0600"
+    force: false
+  become: true
+  diff: false
+
+- name: Deploy the stack (recreates only services whose definition changed)
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ stack_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for Redis to answer
+  ansible.builtin.command:
+    cmd: docker exec {{ redis_container }} redis-cli ping
+  register: redis_ping
+  until: "'PONG' in redis_ping.stdout"
+  retries: 20
+  delay: 3
+  changed_when: false
+
+# Tunables on an already-seeded config are applied live and persisted by Redis itself.
+- name: Apply Redis runtime tunables and persist them
+  ansible.builtin.shell:
+    cmd: >
+      docker exec {{ redis_container }} sh -c '
+      redis-cli config set save "" &&
+      redis-cli config set repl-backlog-size 67108864 &&
+      redis-cli config set replica-announce-ip {{ wg_overlay_ip }} &&
+      redis-cli config rewrite'
+  register: redis_tune
+  failed_when: redis_tune.stdout_lines | select('equalto', 'OK') | list | length != 4
+  changed_when: false
+
+- name: Wait until this node is in its expected replication role
+  ansible.builtin.shell:
+    cmd: >
+      docker exec {{ redis_container }} redis-cli info replication | tr -d '\r'
+      | grep -E '^(role|master_host|master_link_status|connected_slaves):'
+  register: redis_role
+  until: >-
+    (redis_current_master_ip == wg_overlay_ip and 'role:master' in redis_role.stdout
+     and 'connected_slaves:0' not in redis_role.stdout)
+    or (redis_current_master_ip != wg_overlay_ip and 'role:slave' in redis_role.stdout
+     and ('master_host:' ~ redis_current_master_ip) in redis_role.stdout
+     and 'master_link_status:up' in redis_role.stdout)
+  retries: 30
+  delay: 3
+  changed_when: false
+
+- name: Remove the legacy single-file redis.conf (it held the password at 0644)
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/redis.conf"
+    state: absent
+  become: true

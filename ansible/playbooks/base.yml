@@ -9,8 +9,9 @@
   roles:
     - docker
 
-- name: Install base packages + enable IP forwarding on all ThinkCentres
+- name: Install base packages + enable IP forwarding on the three servers
   hosts: edge:data_primary:data_replica
   gather_facts: true
   roles:
     - base_packages
+    - host_hardening

@@ -1,0 +1,99 @@
+---
+# Restricted sync account + nightly local exports (SQLite, Gitea) on this node.
+
+- name: Create the unprivileged sync account (no docker, no sudo)
+  ansible.builtin.user:
+    name: "{{ sync_user }}"
+    system: true
+    shell: /bin/sh
+    home: "{{ sync_root }}"
+    create_home: false
+    groups: []
+    append: false
+  become: true
+
+- name: Create the sync directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ sync_root }}", owner: root, mode: "0755" }
+    - { path: "{{ sync_root }}/.ssh", owner: root, mode: "0755" }
+    - { path: "{{ sync_data_dir }}", owner: "{{ sync_user }}", mode: "0750" }
+    - { path: "{{ sync_data_dir }}/sftp-mirror", owner: "{{ sync_user }}", mode: "0750" }
+    - { path: "{{ sync_data_dir }}/exports", owner: "{{ sync_user }}", mode: "0750" }
+    - { path: "{{ sync_data_dir }}/backups", owner: "{{ sync_user }}", mode: "0750" }
+  become: true
+
+- name: Ensure rsync and sqlite3 are present
+  ansible.builtin.apt:
+    name: [rsync, sqlite3]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Confirm rrsync exists (rsync >= 3.2.4 ships it in /usr/bin)
+  ansible.builtin.stat:
+    path: /usr/bin/rrsync
+  register: rrsync_bin
+  failed_when: not rrsync_bin.stat.exists
+
+- name: Install the export script
+  ansible.builtin.template:
+    src: homelab-exports.sh.j2
+    dest: /usr/local/sbin/homelab-exports
+    mode: "0750"
+  become: true
+
+- name: Install the export service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    content: "{{ item.content }}"
+    mode: "0644"
+  loop:
+    - name: homelab-exports.service
+      content: |
+        # Managed by Ansible (homelab)
+        [Unit]
+        Description=Homelab local exports (SQLite, Gitea) for the backup job
+        After=docker.service
+        Requires=docker.service
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/homelab-exports
+        TimeoutStartSec=1800
+    - name: homelab-exports.timer
+      content: |
+        # Managed by Ansible (homelab)
+        [Unit]
+        Description=Nightly homelab exports, ahead of the backup pull
+        [Timer]
+        OnCalendar={{ exports_on_calendar }}
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+  become: true
+
+- name: Enable the export timer
+  ansible.builtin.systemd:
+    name: homelab-exports.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+# Prove it now rather than discovering at the first restore that it never worked.
+- name: Run the exports once
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/homelab-exports
+  become: true
+  register: exports_run
+  changed_when: true
+
+- name: Show the export run
+  ansible.builtin.debug:
+    var: exports_run.stdout_lines

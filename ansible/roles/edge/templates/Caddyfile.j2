@@ -43,6 +43,14 @@
 
 	encode gzip
 
+	# Baseline hardening for everything served from the edge, Gitea included.
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
 	log {
 		output stdout
 		format console

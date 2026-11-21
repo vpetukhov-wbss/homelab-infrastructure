@@ -8,3 +8,16 @@ gitea_ssh_port: 2223
 gitea_path_prefix: /git
 gitea_public_host: "{{ hostvars['node1-gateway'].ansible_host }}"
 gitea_root_url: "http://{{ hostvars['node1-gateway'].ansible_host }}{{ gitea_path_prefix }}/"
+
+# Pinned, not floating: the runner holds the Docker socket on this host.
+gitea_image: gitea/gitea:1.22.6
+gitea_runner_image: gitea/act_runner:0.6.1
+
+# The runner reaches Gitea over the compose network by service name. Going through
+# this node's own overlay IP fails: from the same bridge Docker does not DNAT, the
+# packet lands in INPUT and ufw drops it (693 crash-loop restarts, 2026-11-21).
+gitea_runner_instance_url: "http://gitea:3000"
+# No `:host` label: host-mode jobs run inside the runner container, next to the socket.
+gitea_runner_labels:
+  - "ubuntu-latest:docker://node:22-bookworm"
+gitea_runner_job_options: "--memory=1g --memory-swap=1g --cpus=1 --pids-limit=512"

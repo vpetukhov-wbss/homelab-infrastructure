@@ -3,7 +3,7 @@
 # so nothing is reachable on the LAN/public — Docker never lands these on 0.0.0.0.
 services:
   postgres-primary:
-    image: postgres:16
+    image: {{ image_postgres }}
     container_name: postgres-primary
     restart: unless-stopped
     environment:
@@ -13,32 +13,48 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
-      - {{ stack_dir }}/postgresql.conf:/etc/postgresql/postgresql.conf:ro
-      - {{ stack_dir }}/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      # A directory, not single files: Ansible's template writes a new inode, which a
+      # single-file bind mount never sees — the container would reload stale config.
+      - {{ stack_dir }}/pgconf:/etc/postgresql:ro
     command: >
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
       -c hba_file=/etc/postgresql/pg_hba.conf
     ports:
       - "{{ wg_overlay_ip }}:5432:5432"
+    # A clean shutdown on a busy HDD can exceed Docker's 10 s default; SIGKILL would
+    # force crash recovery on the next start.
+    stop_grace_period: 60s
+    shm_size: 256mb
+    # If memory runs out, the kernel should kill anything but the database.
+    oom_score_adj: -500
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d homelab"]
       interval: 10s
       timeout: 5s
       retries: 10
 
+  # Container name is historical: Sentinel decides which node is master. Query the
+  # service, never the name.
   redis-primary:
-    image: redis:7-alpine
+    image: {{ image_redis }}
     container_name: redis-primary
     restart: unless-stopped
-    command: ["redis-server", "/etc/redis/redis.conf"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    environment:
+      # redis-cli inside the container authenticates from this, so neither the
+      # healthcheck nor the roles put the password on a command line.
+      REDISCLI_AUTH: "{{ vault_redis_password }}"
     volumes:
-      - {{ stack_dir }}/redis.conf:/etc/redis/redis.conf:ro
+      # A directory, so Redis can persist role changes (CONFIG REWRITE) after a failover.
+      - {{ stack_dir }}/redis:/usr/local/etc/redis
       - redis_primary_data:/data
     ports:
       - "{{ wg_overlay_ip }}:6379:6379"
+    mem_limit: 512m
+    oom_score_adj: -500
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a {{ vault_redis_password }} ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10

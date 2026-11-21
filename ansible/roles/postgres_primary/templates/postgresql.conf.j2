@@ -14,15 +14,28 @@ work_mem = 8MB
 wal_level = replica
 max_wal_senders = 5
 max_replication_slots = 5
-wal_compression = on
+wal_compression = lz4
 hot_standby = on
 synchronous_commit = on          # local durability kept; replication is ASYNC (no synchronous_standby_names)
+# Without hint-bit WAL logging (or data checksums) pg_rewind refuses to run, and the
+# only way back after a promotion is a full re-basebackup.
+wal_log_hints = on
+# Nodes have vanished for days. An unlimited slot would keep WAL until this node's only
+# disk filled and the primary PANICked. Past this, the slot is invalidated instead and
+# the standby must be re-seeded deliberately.
+max_slot_wal_keep_size = 20GB
+
+# Checkpoints: fewer, smoother write bursts on a single spindle
+max_wal_size = 4GB
+min_wal_size = 512MB
+checkpoint_timeout = 15min
+checkpoint_completion_target = 0.9
 
 # HDD-aware planner/IO
 random_page_cost = 4.0
 effective_io_concurrency = 2
-checkpoint_completion_target = 0.9
 
 # Logging (light)
 logging_collector = off
 log_min_duration_statement = 1000
+log_checkpoints = on

@@ -6,17 +6,24 @@
     state: directory
     mode: "0750"
 
-# Config files are read by the container service user (uid 999) → 0644 (they hold no
-# secrets except redis.conf's requirepass, which stays node-local behind the firewall).
-- name: Template Postgres + Redis config files (container-readable)
+# PostgreSQL config files are read by the container service user (uid 999) → 0644; they
+# hold no secrets. Redis has its own seeded, Redis-owned config (tasks/redis.yml).
+# They live in a directory that is bind-mounted whole, so a reload sees the new file.
+- name: Create the PostgreSQL config directory
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/pgconf"
+    state: directory
+    mode: "0755"
+
+- name: Template Postgres config files (container-readable)
   ansible.builtin.template:
     src: "{{ item }}"
-    dest: "{{ stack_dir }}/{{ item | replace('.j2','') }}"
+    dest: "{{ stack_dir }}/pgconf/{{ item | replace('.j2','') }}"
     mode: "0644"
   loop:
     - postgresql.conf.j2
     - pg_hba.conf.j2
-    - redis.conf.j2
+  notify: reload postgres
 
 # Compose holds the DB passwords (env) and is read by the host docker CLI → 0640.
 - name: Template docker-compose (host-only, 0640)
@@ -24,13 +31,12 @@
     src: docker-compose.yml.j2
     dest: "{{ stack_dir }}/docker-compose.yml"
     mode: "0640"
+  diff: false
 
-- name: Deploy the data-primary stack
-  ansible.builtin.command:
-    cmd: docker compose up -d
-    chdir: "{{ stack_dir }}"
-  register: compose_up
-  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+- name: Redis config, stack deployment and replication role
+  ansible.builtin.include_tasks: redis.yml
+  vars:
+    redis_container: redis-primary
 
 - name: Wait for Postgres to accept connections
   ansible.builtin.command:
@@ -72,3 +78,43 @@
     docker exec postgres-primary psql -U postgres -c "CREATE DATABASE homelab;"
   register: db_create
   changed_when: "'CREATE DATABASE' in db_create.stdout"
+
+# --- Verify the effective state, not the files written ---------------------------
+- name: Apply pending config reloads before verifying
+  ansible.builtin.meta: flush_handlers
+
+- name: Read the effective PostgreSQL settings
+  ansible.builtin.command:
+    cmd: >
+      docker exec -u postgres postgres-primary psql -XAt -c
+      "select name || '=' || setting from pg_settings
+       where name in ('wal_log_hints','max_slot_wal_keep_size','wal_compression','max_wal_size','checkpoint_timeout')
+       union all select 'pending_restart=' || count(*) from pg_settings where pending_restart"
+  register: pg_effective
+  changed_when: false
+
+- name: Assert the settings are live (pending_restart means a restart is still owed)
+  ansible.builtin.assert:
+    that:
+      - "'wal_log_hints=on' in pg_effective.stdout_lines"
+      - "'max_slot_wal_keep_size=20480' in pg_effective.stdout_lines"
+      - "'pending_restart=0' in pg_effective.stdout_lines"
+    fail_msg: "PostgreSQL is not running the templated config: {{ pg_effective.stdout_lines }}"
+    success_msg: "{{ pg_effective.stdout_lines | join(', ') }}"
+
+- name: Wait until the standby is streaming again
+  ansible.builtin.command:
+    cmd: >
+      docker exec -u postgres postgres-primary psql -XAtc
+      "select state from pg_stat_replication where application_name = 'node3'"
+  register: pg_standby_state
+  until: pg_standby_state.stdout == 'streaming'
+  retries: 20
+  delay: 3
+  changed_when: false
+
+- name: Remove the legacy single-file configs (now under pgconf/)
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/{{ item }}"
+    state: absent
+  loop: [postgresql.conf, pg_hba.conf]

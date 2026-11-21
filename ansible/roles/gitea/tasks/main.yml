@@ -16,6 +16,13 @@
     dest: "{{ stack_dir }}/docker-compose.yml"
     mode: "0644"
 
+- name: Template the runner configuration
+  ansible.builtin.template:
+    src: runner-config.yaml.j2
+    dest: "{{ stack_dir }}/runner-data/config.yaml"
+    mode: "0644"
+  register: runner_config
+
 - name: Start Gitea (first, so a runner token can be generated)
   ansible.builtin.command:
     cmd: docker compose up -d gitea
@@ -56,19 +63,41 @@
     # `/sbin/tini -- run.sh`, a wrapper that configures itself from environment
     # variables and ignores CLI flags entirely. Passing --instance to it produces
     # "instance address is empty" and an endless retry loop.
+    # --network: register over the compose network, the same path the daemon uses.
     cmd: >
       docker run --rm
+      --network {{ stack_dir | basename }}_default
       --entrypoint act_runner
       -w /data
       -v {{ stack_dir }}/runner-data:/data
-      gitea/act_runner:latest
+      {{ gitea_runner_image }}
       register --no-interactive
-      --instance http://{{ wg_overlay_ip }}:{{ gitea_http_port }}
+      --instance {{ gitea_runner_instance_url }}
       --token {{ runner_token.stdout | trim }}
       --name {{ inventory_hostname }}-runner
-      --labels ubuntu-latest:docker://node:20-bookworm,homelab:host
+      --labels {{ gitea_runner_labels | join(',') }}
   when: not runner_registered.stat.exists
   no_log: true
+
+# An existing registration stores the instance address in .runner; repoint it rather
+# than burning a new registration token.
+- name: Point an existing registration at the compose-network address
+  ansible.builtin.replace:
+    path: "{{ stack_dir }}/runner-data/.runner"
+    regexp: '"address":\s*"[^"]*"'
+    replace: '"address": "{{ gitea_runner_instance_url }}"'
+  become: true
+  diff: false
+  register: runner_address
+
+# .runner holds the runner's credential token.
+- name: Restrict the runner credential file
+  ansible.builtin.file:
+    path: "{{ stack_dir }}/runner-data/.runner"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
 
 - name: Start the act_runner
   ansible.builtin.command:
@@ -76,3 +105,41 @@
     chdir: "{{ stack_dir }}"
   register: runner_up
   changed_when: "'Started' in runner_up.stderr or 'Created' in runner_up.stderr"
+
+# compose only recreates on a definition change; config/.runner edits need a restart.
+- name: Restart the runner when its config or address changed
+  ansible.builtin.command:
+    cmd: docker restart act_runner
+  when: runner_config.changed or runner_address.changed
+  changed_when: true
+
+# Verify the effective state: a crash-looping runner looks "Up" for a few seconds.
+# Look at the logs since the container's CURRENT start: on an unchanged re-run the
+# runner was not restarted, so there is no recent declare line to find.
+- name: Wait until the runner has declared itself to Gitea
+  ansible.builtin.shell:
+    cmd: >
+      docker logs --since "$(docker inspect -f '{{ "{{" }}.State.StartedAt{{ "}}" }}' act_runner)" act_runner 2>&1
+      | grep -c 'declare successfully' || true
+  register: runner_declared
+  until: runner_declared.stdout | int > 0
+  retries: 20
+  delay: 3
+  changed_when: false
+
+- name: Read the runner restart count
+  ansible.builtin.command:
+    cmd: docker inspect -f '{{ "{{" }}.RestartCount{{ "}}" }}' act_runner
+  register: runner_restarts_before
+  changed_when: false
+
+- name: Give a crash loop time to show itself
+  ansible.builtin.pause:
+    seconds: 30
+
+- name: Assert the runner is stable
+  ansible.builtin.command:
+    cmd: docker inspect -f '{{ "{{" }}.RestartCount{{ "}}" }} {{ "{{" }}.State.Status{{ "}}" }}' act_runner
+  register: runner_restarts_after
+  changed_when: false
+  failed_when: runner_restarts_after.stdout != (runner_restarts_before.stdout ~ ' running')

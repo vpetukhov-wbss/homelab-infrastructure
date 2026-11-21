@@ -54,13 +54,17 @@
   delay: 3
   until: f2b_status.rc == 0
 
-- name: Confirm our own networks are exempt
+# The overlay and the controller must be exempt; the (hostile) LAN as a whole must not.
+- name: Confirm the overlay and the controller are exempt, the LAN is not
   ansible.builtin.command:
     cmd: fail2ban-client get sshd ignoreip
   become: true
   register: f2b_ignore
   changed_when: false
-  failed_when: "'192.168.0.0/24' not in f2b_ignore.stdout or '10.44.0.0/24' not in f2b_ignore.stdout"
+  failed_when: >-
+    (wg_overlay_cidr | default('10.44.0.0/24')) not in f2b_ignore.stdout
+    or (controller_lan_ip is defined and controller_lan_ip not in f2b_ignore.stdout)
+    or (lan_cidr | default('192.168.0.0/24')) in f2b_ignore.stdout
 
 - name: Report jail state
   ansible.builtin.debug:

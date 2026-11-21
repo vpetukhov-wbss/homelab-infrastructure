@@ -1,0 +1,17 @@
+# Managed by Ansible (homelab)
+[Unit]
+Description=Homelab overlay guard (drop non-WireGuard traffic to the overlay subnet)
+Documentation=file:///usr/local/sbin/homelab-overlay-guard
+# In place before Docker publishes any overlay-bound port.
+Before=docker.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/homelab-overlay-guard apply
+ExecStop=/usr/local/sbin/homelab-overlay-guard remove
+
+[Install]
+WantedBy=multi-user.target

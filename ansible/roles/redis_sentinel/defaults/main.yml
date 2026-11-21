@@ -1,0 +1,11 @@
+---
+sentinel_master_name: "{{ redis_master_name | default('homelab-redis') }}"
+# Sentinel persists failovers by rewriting its config (temp file + rename). That only
+# works on a bind-mounted DIRECTORY; a single-file mount fails with EBUSY and the
+# failover state lives only in memory (seen on all three nodes, 2026-11-21).
+sentinel_conf_dir: "{{ stack_dir }}/conf"
+sentinel_quorum: 2
+# 5 s was shorter than a busy HDD can stall; a flapping master is worse than a slower failover.
+sentinel_down_after_ms: 20000
+sentinel_failover_timeout_ms: 60000
+sentinel_parallel_syncs: 1

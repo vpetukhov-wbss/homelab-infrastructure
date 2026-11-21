@@ -1,5 +1,7 @@
 -- Managed by Ansible (homelab) — SFTP mirror {{ inventory_hostname }} -> {{ mirror_target_host }}
 -- One-way: node1 is authoritative, node3 holds a warm copy over the WireGuard overlay.
+-- default.rsync (not rsyncssh): the key is confined to rrsync on the target, which
+-- refuses the plain `ssh mv/rm` commands rsyncssh uses for moves and deletes.
 settings {
   logfile        = "{{ mirror_log_dir }}/lsyncd.log",
   statusFile     = "{{ mirror_log_dir }}/lsyncd.status",
@@ -9,29 +11,27 @@ settings {
 }
 
 sync {
-  default.rsyncssh,
-  source    = "{{ sftp_data_dir }}",
-  host      = "{{ mirror_target_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }}",
-  targetdir = "{{ mirror_target_dir }}",
-  delay     = {{ mirror_delay }},
+  default.rsync,
+  source = "{{ sftp_data_dir }}",
+  -- Path is relative to the rrsync root ({{ mirror_sync_data }}) on the target.
+  target = "{{ mirror_sync_user }}@{{ hostvars[mirror_target_host].wg_overlay_ip }}:{{ mirror_target_subdir }}/",
+  delay  = {{ mirror_delay }},
   -- "running" propagates deletes that happen while lsyncd watches, but never does a
   -- bulk delete on startup — so a momentarily-empty source cannot wipe the mirror.
-  delete    = "running",
+  delete = "running",
   rsync = {
     archive  = true,
-    -- The overlay is wired gigabit; these boxes are 2-core, so spend bandwidth not CPU.
+    -- 2-core boxes: spend bandwidth, not CPU.
     compress = false,
     perms    = true,
     times    = true,
-    -- rsync runs as an unprivileged user on the target and cannot chown, so ownership
-    -- is deliberately not mirrored: files land as {{ mirror_target_user }}. On promotion,
-    -- chown -R 1001:1001 {{ mirror_target_dir }} to match the sftp container's uid.
+    -- The target account cannot chown, so files land as {{ mirror_sync_user }}. On
+    -- promotion: chown -R 1001:1001 {{ mirror_sync_data }}/{{ mirror_target_subdir }}.
     owner    = false,
     group    = false,
-  },
-  ssh = {
-    port         = {{ mirror_target_ssh_port }},
-    identityFile = "{{ mirror_key_path }}",
-    _extra       = { "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new" },
+    -- lsyncd passes -s (--protect-args) by default; rrsync refuses it because it must
+    -- see the paths to confine them ("option -s has been disabled on this server").
+    protect_args = false,
+    rsh      ="/usr/bin/ssh -p {{ mirror_target_ssh_port }} -i {{ mirror_key_path }} -o BatchMode=yes -o StrictHostKeyChecking=yes",
   },
 }

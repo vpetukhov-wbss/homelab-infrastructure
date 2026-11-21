@@ -2,7 +2,7 @@
 # Caddy is the ONLY public service (80/443). Vault + SFTP bind to the overlay IP only.
 services:
   caddy:
-    image: caddy:2-alpine
+    image: {{ image_caddy }}
     container_name: caddy
     restart: unless-stopped
     ports:
@@ -14,7 +14,7 @@ services:
       - caddy_config:/config
 
   vault:
-    image: hashicorp/vault:1.18
+    image: {{ image_vault }}
     container_name: vault
     restart: unless-stopped
     cap_add:
@@ -25,10 +25,11 @@ services:
       - {{ stack_dir }}/vault-tls:/vault/tls:ro
       - {{ stack_dir }}/vault-data:/vault/data
     ports:
-      - "{{ wg_overlay_ip }}:8200:8200"
+      # Loopback until initialised — see vault_publish_ip in defaults/main.yml.
+      - "{{ vault_publish_ip }}:8200:8200"
 
   sftp:
-    image: atmoz/sftp:alpine
+    image: {{ image_sftp }}
     container_name: sftp
     restart: unless-stopped
     command: ["homelab::1001"]

@@ -1,16 +1,32 @@
-# Managed by Ansible (homelab) — node2 Redis PRIMARY
+# Managed by Ansible (homelab) — SEED ONLY, Redis on {{ inventory_hostname }}.
+# Shared by the postgres_primary and postgres_replica roles.
+# Written once, when absent. After that Redis and Sentinel own this file: a failover
+# persists the new `replicaof` here (CONFIG REWRITE), so a restart comes back in the
+# right role. Re-templating would revert failovers, so runtime tunables are applied
+# with CONFIG SET + CONFIG REWRITE instead (see tasks).
 bind 0.0.0.0
 protected-mode yes
 port 6379
 requirepass {{ vault_redis_password }}
 masterauth {{ vault_redis_password }}
 
-# Persistence (AOF, HDD-friendly fsync)
+# Role at seed time comes from the live Sentinel view, never from the inventory.
+{% if redis_current_master_ip != wg_overlay_ip %}
+replicaof {{ redis_current_master_ip }} 6379
+{% endif %}
+replica-read-only yes
+# Tell the master and Sentinel the overlay address, not the container's bridge IP.
+replica-announce-ip {{ wg_overlay_ip }}
+replica-announce-port 6379
+
+# Persistence: AOF only. RDB snapshots on top of AOF doubled the writes on the
+# spindle PostgreSQL also uses. Full resyncs stream over the network (diskless).
 appendonly yes
 appendfsync everysec
-save 900 1
-save 300 10
+save ""
+repl-diskless-sync yes
+# The 1 MB default forced a full resync after any brief WireGuard blip.
+repl-backlog-size 64mb
 
-# Memory cap (light footprint on a shared box)
 maxmemory 256mb
 maxmemory-policy noeviction

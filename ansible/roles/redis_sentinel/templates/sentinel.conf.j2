@@ -1,13 +1,19 @@
-# Managed by Ansible (homelab) — Redis Sentinel on {{ inventory_hostname }}
-# Sentinel rewrites this file with runtime state, so the container must be able to write it.
+# Managed by Ansible (homelab) — SEED ONLY, Sentinel on {{ inventory_hostname }}.
+# Written once, when absent. From then on Sentinel owns this file: it records the current
+# master, epochs and known peers here, which is what lets a failover survive a restart.
+# Re-templating it would erase that state, so tunables are applied with SENTINEL SET.
 port 26379
 bind 0.0.0.0
 sentinel resolve-hostnames yes
 sentinel announce-ip {{ wg_overlay_ip }}
 sentinel announce-port 26379
 
-sentinel monitor homelab-redis {{ hostvars['node2'].wg_overlay_ip }} 6379 2
-sentinel auth-pass homelab-redis {{ vault_redis_password }}
-sentinel down-after-milliseconds homelab-redis 5000
-sentinel failover-timeout homelab-redis 15000
-sentinel parallel-syncs homelab-redis 1
+# Clients and the backup job must authenticate; the other Sentinels use sentinel-pass.
+requirepass {{ vault_redis_password }}
+sentinel sentinel-pass {{ vault_redis_password }}
+
+sentinel monitor {{ sentinel_master_name }} {{ redis_current_master_ip }} 6379 {{ sentinel_quorum }}
+sentinel auth-pass {{ sentinel_master_name }} {{ vault_redis_password }}
+sentinel down-after-milliseconds {{ sentinel_master_name }} {{ sentinel_down_after_ms }}
+sentinel failover-timeout {{ sentinel_master_name }} {{ sentinel_failover_timeout_ms }}
+sentinel parallel-syncs {{ sentinel_master_name }} {{ sentinel_parallel_syncs }}

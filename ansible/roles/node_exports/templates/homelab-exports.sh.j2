@@ -1,0 +1,65 @@
+#!/bin/bash
+# Managed by Ansible (homelab) — local data exports on {{ inventory_hostname }}.
+# Produces consistent snapshots of this node's stateful apps into
+# {{ sync_data_dir }}/exports/current, where the edge's backup job pulls them with a
+# read-restricted rsync. Snapshots are taken HERE so no other host needs a shell here.
+set -euo pipefail
+umask 027
+
+OUT="{{ sync_data_dir }}/exports"
+STAGE="$(mktemp -d "$OUT/.stage.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+
+# --- SQLite (application data) ------------------------------------------------
+# sqlite3 .backup uses the backup API: consistent even under concurrent writers. Files
+# with unusual names are skipped rather than quoted into the dot-command.
+dir="{{ exports_sqlite_dir }}"
+mkdir -p "$STAGE/sqlite"
+n=0
+for f in "$dir"/*.db "$dir"/*.sqlite "$dir"/*.sqlite3 "$dir"/*/*.db "$dir"/*/*.sqlite "$dir"/*/*.sqlite3; do
+  [ -f "$f" ] || continue
+  rel=${f#"$dir"/}
+  case "$rel" in *[!A-Za-z0-9._/-]*) log "WARN: skipped (unsafe name)"; continue ;; esac
+  mkdir -p "$STAGE/sqlite/$(dirname "$rel")"
+  sqlite3 "$f" ".backup '$STAGE/sqlite/$rel'"
+  [ "$(sqlite3 "$STAGE/sqlite/$rel" 'PRAGMA integrity_check;')" = ok ] \
+    || { log "FATAL: integrity check failed: $rel"; exit 1; }
+  n=$((n + 1))
+done
+log "SQLite snapshots: $n"
+
+# --- Gitea (repositories, database, app.ini incl. the Actions secret key) ----
+if docker ps --format '{{ "{{" }}.Names{{ "}}" }}' | grep -qx gitea; then
+  # `gitea dump` aborts if the repository root does not exist yet (no repo created so
+  # far); Gitea would create the same empty directory on the first repository.
+  if ! docker exec -u git gitea sh -c 'mkdir -p /data/git/repositories && rm -f /tmp/gitea-dump.zip && gitea dump --work-path /data --type zip --file /tmp/gitea-dump.zip' \
+       >"$STAGE/gitea-dump.log" 2>&1; then
+    log "FATAL: gitea dump failed: $(grep -E '\[F\]|rror' "$STAGE/gitea-dump.log" | tail -2 | tr '\n' ' ')"
+    exit 1
+  fi
+  rm -f "$STAGE/gitea-dump.log"
+  docker cp gitea:/tmp/gitea-dump.zip "$STAGE/gitea-dump.zip" >/dev/null
+  docker exec gitea rm -f /tmp/gitea-dump.zip
+  python3 -I -m zipfile -t "$STAGE/gitea-dump.zip" >/dev/null \
+    || { log "FATAL: gitea dump is not a valid zip"; exit 1; }
+  log "Gitea dump: $(du -h "$STAGE/gitea-dump.zip" | cut -f1)"
+else
+  log "WARN: gitea container not running, no Gitea dump"
+fi
+
+date -u +%Y-%m-%dT%H:%M:%SZ > "$STAGE/EXPORTED_AT"
+
+# --- publish atomically: the puller never sees a half-written set ------------
+rm -rf "$OUT/previous"
+[ -d "$OUT/current" ] && mv "$OUT/current" "$OUT/previous"
+mv "$STAGE" "$OUT/current"
+trap - EXIT
+chown -R {{ sync_user }}:{{ sync_user }} "$OUT/current"
+chmod 0750 "$OUT/current"
+
+# --- prune off-node archive copies (the edge pushes, only this node deletes) --
+find "{{ sync_data_dir }}/backups" -maxdepth 1 -name 'homelab-*.tar.gz.enc' \
+  -mtime +{{ exports_backup_copies_keep_days }} -print -delete | sed 's/^/pruned copy: /'
+
+log "exports published at $OUT/current"
