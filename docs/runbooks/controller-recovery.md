@@ -7,7 +7,7 @@ The controller is wherever Ansible (and Claude Code) runs. It holds the only cop
 | `~/.ssh/homelab-controller` | SSH is key-only: without it, no remote login to any node |
 | `~/.homelab_vault_pass` | Opens every ansible-vault file, including the WireGuard backup |
 | `inventory/hosts.yml`, `inventory/group_vars/homelab/*.yml` | Real inventory and secrets; git-ignored |
-| Unpushed commits | Until they are pushed somewhere |
+| `~/.ssh/github-homelab-infrastructure` + the `github-homelab` entry in `~/.ssh/config` | The deploy key that pushes this repository to GitHub; replaceable in the repository's Settings → Deploy keys |
 
 Lose these and recovery means a monitor and keyboard at every node.
 

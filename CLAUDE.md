@@ -96,7 +96,7 @@ Specialist subagents live in `.claude/agents/`. Use them when a task crosses dom
 | ansible-vault | the secrets in use today (`inventory/group_vars/homelab/*.yml`, git-ignored) | in use |
 | HashiCorp Vault | the intended runtime secret store | deployed, **not initialised** |
 | Gitea + Actions | internal Git and CI | running, no pipelines yet |
-| GitHub | public upstream and portfolio | push pending a credential |
+| GitHub | public upstream and portfolio; `main` is the current state | push over SSH alias `github-homelab` (deploy key for this repository only) |
 | `scripts/` | thin entry points; logic that belongs in a role goes in the role | |
 
 **Not used:**

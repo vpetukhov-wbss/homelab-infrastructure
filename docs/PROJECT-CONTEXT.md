@@ -430,7 +430,6 @@ the relocation reverted.
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
 | **Laptop reinstall as node4** | Installer stick built (Wi-Fi + recovery restore + SSH kept on 2345 so the router's forward — the owner's only remote path — keeps working); waits for the user's new homelab password, after which the bundle and the stick are rebuilt. |
-| **Push to GitHub** | Committed on 2026-11-21 (17 commits ahead of `origin/main`). The push needs a GitHub credential on the controller — a write deploy key for this repository. The recovery bundle carries the full repository meanwhile. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | Planned on node4. |
@@ -445,8 +444,10 @@ nowhere else:
 ~/.homelab_vault_pass         opens every ansible-vault secret AND the WireGuard backup
 inventory/hosts.yml           git-ignored
 inventory/group_vars/...      git-ignored, encrypted
-17 unpushed commits (until the first push)
 ```
+
+(The repository itself is on GitHub since 2026-11-21; only the git-ignored files above
+are not.)
 
 There is a circular trap here: the WireGuard configuration backup is encrypted with the
 vault password that also lives only on the laptop.

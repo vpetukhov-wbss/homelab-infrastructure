@@ -69,8 +69,9 @@ the password manager never shares a host with CI jobs.
   on 2026-11-21. The one finding was prose and is recorded in `.gitleaksignore`.
 - [x] Commit the work in three reviewable commits (2026-11-21): the audit fixes, the
   installer and recovery tooling, and the documentation.
-- [ ] Push to GitHub. This needs a GitHub credential on the controller, which will be a
-  deploy key with write access to this repository only.
+- [x] Push to GitHub (2026-11-21). `main` was fast-forwarded to the current state with
+  a deploy key that has write access to this repository only:
+  `~/.ssh/github-homelab-infrastructure`, SSH alias `github-homelab`.
 
 **Done when** GitHub shows the current state and no deployed claim in it is false.
 
