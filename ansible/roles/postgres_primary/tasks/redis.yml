@@ -66,9 +66,3 @@
   retries: 30
   delay: 3
   changed_when: false
-
-- name: Remove the legacy single-file redis.conf (it held the password at 0644)
-  ansible.builtin.file:
-    path: "{{ stack_dir }}/redis.conf"
-    state: absent
-  become: true

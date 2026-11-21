@@ -44,7 +44,7 @@ table before proposing anything.
 | Disk | Seagate ST3250312AS 233 G **HDD** | WD WD2500AAKX 233 G **HDD** | WD WD5000AAKX 466 G **HDD** | Samsung MZ7LN256 238 G **SSD** |
 | Root filesystem | 227 G | 227 G | 456 G | 233 G |
 | OS | Ubuntu 22.04.5 | Ubuntu **24.04.5** | Ubuntu 22.04.5 | Ubuntu **26.04** |
-| Kernel | 5.15.0-203 | 6.8.0-149 | 5.15.0-181 | 7.0.0-43 |
+| Kernel | 5.15.0-204 | 6.8.0-149 | 5.15.0-181 | 7.0.0-43 |
 | NIC | `eno1`, wired | `eno1`, wired | `enp0s25`, wired | `wlp5s0` **Wi-Fi** (`enp0s31f6` unplugged) |
 | LAN | 192.168.0.101 **and** .23 | 192.168.0.28 | 192.168.0.103 | 192.168.0.35 |
 | Overlay | 10.44.0.1 | 10.44.0.2 | 10.44.0.3 | *(none — see §9)* |

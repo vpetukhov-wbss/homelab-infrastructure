@@ -12,6 +12,6 @@
   hosts: data_replica
   gather_facts: true
   vars:
-    stack_dir: /home/vpetukhov/stacks/data-replica
+    stack_dir: "/home/{{ ansible_user }}/stacks/data-replica"
   roles:
     - postgres_replica

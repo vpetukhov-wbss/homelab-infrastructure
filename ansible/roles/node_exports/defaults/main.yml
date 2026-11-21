@@ -1,7 +1,7 @@
 ---
 # The one account other nodes may sync with. It is NOT in the docker or sudo groups:
-# before 2026-11-21 the mirror/backup key landed as vpetukhov, which is root via the
-# docker group, so root on node1 meant root on node3.
+# a key that lands on the admin user is root via the docker group, so root on node1
+# would mean root on node3.
 sync_user: homelab-sync
 sync_root: /srv/homelab-sync
 # rrsync confines every connection to this directory. ~/.ssh stays OUTSIDE it (and
@@ -9,7 +9,7 @@ sync_root: /srv/homelab-sync
 sync_data_dir: "{{ sync_root }}/data"
 
 # Snapshots are taken locally, so no remote host ever runs commands here.
-exports_sqlite_dir: /home/vpetukhov/stacks/apphost/sqlite
+exports_sqlite_dir: "/home/{{ ansible_user }}/stacks/apphost/sqlite"
 # UTC; the backup job on the edge pulls at 00:00.
 exports_on_calendar: "*-*-* 23:40:00"
 # Off-node copies of the edge's encrypted archives, pruned here (the edge cannot delete).

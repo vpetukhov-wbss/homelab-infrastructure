@@ -64,7 +64,7 @@
   failed_when: >-
     (wg_overlay_cidr | default('10.44.0.0/24')) not in f2b_ignore.stdout
     or (controller_lan_ip is defined and controller_lan_ip not in f2b_ignore.stdout)
-    or (lan_cidr | default('192.168.0.0/24')) in f2b_ignore.stdout
+    or lan_cidr in f2b_ignore.stdout
 
 - name: Report jail state
   ansible.builtin.debug:

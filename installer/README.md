@@ -4,8 +4,8 @@ Builds a node-specific, unattended Ubuntu Server installer on a USB stick. It pr
 a bare host that Ansible can reach — nothing more. Roles (Docker, WireGuard, firewall,
 services) are applied afterwards from the inventory.
 
-**Status:** implemented and used for `node4` (ThinkPad L470) on 2026-11-21 with
-Ubuntu Server **26.04.1 LTS**. Older nodes run 22.04/24.04; versions are not aligned on
+**Status:** built for `node4` (ThinkPad L470) on 2026-11-21 with Ubuntu Server
+**26.04.1 LTS**; not installed yet. Older nodes run 22.04/24.04; versions are not aligned on
 purpose (see `docs/PROJECT-CONTEXT.md` §2).
 
 | File | Purpose |
@@ -108,8 +108,8 @@ scripts/build-installer-iso.py \
   --source-iso ~/homelab-iso/download/ubuntu-$V-live-server-amd64.iso \
   --sha256sums ~/homelab-iso/download/SHA256SUMS \
   --schema ~/homelab-iso/autoinstall-schema.json \
-  --name node4 --disk-serial S3S7NF0JB05893 \
-  --ssh-key ~/.ssh/homelab-controller.pub --ssh-key installer/build/legion.pub \
+  --name node4 --disk-serial <DISK_SERIAL> \
+  --ssh-key ~/.ssh/homelab-controller.pub --ssh-key ~/.ssh/<admin-pc>.pub \
   --ssh-port 2345 \
   --wifi-ssid "<SSID>" --wifi-psk-hex-file psk.hex \
   --recovery-bundle ~/homelab-recovery/homelab-recovery-YYYYMMDD-HHMM.tar.gpg

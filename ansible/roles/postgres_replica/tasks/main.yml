@@ -111,8 +111,3 @@
   retries: 20
   delay: 3
   changed_when: false
-
-- name: Remove the legacy single-file config (now under pgconf/)
-  ansible.builtin.file:
-    path: "{{ stack_dir }}/postgresql.conf"
-    state: absent

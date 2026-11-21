@@ -12,6 +12,6 @@
   hosts: data_primary
   gather_facts: true
   vars:
-    stack_dir: /home/vpetukhov/stacks/data-primary
+    stack_dir: "/home/{{ ansible_user }}/stacks/data-primary"
   roles:
     - postgres_primary
