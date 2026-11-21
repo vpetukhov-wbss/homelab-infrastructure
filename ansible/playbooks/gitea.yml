@@ -4,6 +4,6 @@
   hosts: data_replica
   gather_facts: true
   vars:
-    stack_dir: /home/vpetukhov/stacks/gitea
+    stack_dir: "/home/{{ ansible_user }}/stacks/gitea"
   roles:
     - gitea

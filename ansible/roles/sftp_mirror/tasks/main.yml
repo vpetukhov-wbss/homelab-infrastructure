@@ -59,31 +59,6 @@
   become: true
   delegate_to: "{{ mirror_target_host }}"
 
-# Before 2026-11-21 this key logged in as vpetukhov (root via the docker group).
-- name: Revoke the key's old access as vpetukhov
-  ansible.posix.authorized_key:
-    user: vpetukhov
-    key: "{{ mirror_key.public_key }}"
-    state: absent
-  become: true
-  delegate_to: "{{ mirror_target_host }}"
-
-- name: Migrate the legacy mirror directory once (only into an empty target)
-  ansible.builtin.shell:
-    cmd: |
-      set -e
-      T="{{ mirror_sync_data }}/{{ mirror_target_subdir }}"
-      [ -d "{{ mirror_legacy_dir }}" ] || { echo "no legacy dir"; exit 0; }
-      [ -z "$(ls -A "$T")" ] || { echo "target not empty - skipped"; exit 0; }
-      rsync -a "{{ mirror_legacy_dir }}/" "$T/"
-      chown -R {{ mirror_sync_user }}:{{ mirror_sync_user }} "$T"
-      echo migrated
-    executable: /bin/bash
-  register: mirror_migration
-  changed_when: "'migrated' in mirror_migration.stdout"
-  become: true
-  delegate_to: "{{ mirror_target_host }}"
-
 # lsyncd runs as root, and the ssh options it hands to rsync do not reliably carry
 # StrictHostKeyChecking through. If root does not already trust the target's host key,
 # every sync dies with "Host key verification failed" — so seed it explicitly.

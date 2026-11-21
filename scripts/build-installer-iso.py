@@ -26,7 +26,7 @@ Example:
     --source-iso ~/homelab-iso/download/ubuntu-26.04.1-live-server-amd64.iso \\
     --sha256sums ~/homelab-iso/download/SHA256SUMS \\
     --schema ~/homelab-iso/schema/autoinstall-schema.json \\
-    --name node4 --disk-serial S3S7NF0JB05893 \\
+    --name node4 --disk-serial <DISK_SERIAL> \\
     --ssh-key ~/.ssh/homelab-controller.pub \\
     --wifi-ssid MyNet --wifi-psk-hex-file /path/psk.hex \\
     --recovery-bundle ~/homelab-recovery/homelab-recovery-YYYYMMDD-HHMM.tar.gpg

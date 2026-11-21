@@ -4,6 +4,6 @@
   hosts: edge
   gather_facts: true
   vars:
-    stack_dir: /home/vpetukhov/stacks/rabbitmq
+    stack_dir: "/home/{{ ansible_user }}/stacks/rabbitmq"
   roles:
     - backup

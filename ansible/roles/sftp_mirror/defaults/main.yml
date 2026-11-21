@@ -1,7 +1,7 @@
 ---
 # SFTP mirror (node1 primary -> node3 standby) tunables.
 # sftp_data_dir must match the bind mount the edge role gives the sftp container.
-sftp_data_dir: /home/vpetukhov/stacks/edge/sftp_data
+sftp_data_dir: "/home/{{ ansible_user }}/stacks/edge/sftp_data"
 
 # Mirror target = the node that is NOT holding the SFTP primary. Edge (and the SFTP
 # primary) lives on node1; node3 holds the standby copy on the fleet's biggest disk.
@@ -16,9 +16,6 @@ mirror_sync_user: homelab-sync
 mirror_sync_root: /srv/homelab-sync
 mirror_sync_data: "{{ mirror_sync_root }}/data"
 mirror_target_subdir: sftp-mirror        # relative to mirror_sync_data (rrsync root)
-
-# Where the mirror lived before 2026-11-21 (as vpetukhov); migrated once if present.
-mirror_legacy_dir: /home/vpetukhov/stacks/sftp-mirror/data
 
 mirror_key_path: /etc/lsyncd/id_sftp_mirror
 mirror_log_dir: /var/log/lsyncd

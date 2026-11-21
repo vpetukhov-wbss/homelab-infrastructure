@@ -69,9 +69,3 @@
   failed_when: "'OK' not in sentinel_set.stdout"
   changed_when: false
   become: true
-
-- name: Remove the legacy single-file config (it held the Redis password at 0644)
-  ansible.builtin.file:
-    path: "{{ stack_dir }}/sentinel.conf"
-    state: absent
-  become: true

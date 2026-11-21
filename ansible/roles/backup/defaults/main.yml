@@ -1,7 +1,7 @@
 ---
 # Backups live on the edge node: a third machine, so losing either data node does not
 # take the backups with it. Never put them on the node holding the data they protect.
-backup_dir: /home/vpetukhov/backups
+backup_dir: "/home/{{ ansible_user }}/backups"
 backup_secrets_dir: /etc/homelab
 backup_db_name: homelab
 # How many encrypted archives to keep. At one run a day this is three weeks.
@@ -23,4 +23,4 @@ backup_sync_key: /etc/lsyncd/id_sftp_mirror
 backup_exports_max_age_hours: 6
 
 # Local to this node and otherwise unprotected: the mirror propagates deletes.
-backup_sftp_dir: /home/vpetukhov/stacks/edge/sftp_data
+backup_sftp_dir: "/home/{{ ansible_user }}/stacks/edge/sftp_data"

@@ -1,7 +1,7 @@
 ---
 # Base layer: Docker (node2 only — node1/node3 already have it), base packages everywhere.
 # Run: ansible-playbook playbooks/base.yml  (become password from the git-ignored ansible-vault file)
-# node4-laptop excluded (local sudo requires interactive password; handled separately).
+# node4 is not a managed server yet; it joins in roadmap M3.
 
 - name: Install Docker on fresh data-primary node
   hosts: data_primary

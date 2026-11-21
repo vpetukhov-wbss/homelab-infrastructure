@@ -31,35 +31,6 @@
     mode: "0755"
   become: true
 
-# One-time, non-destructive: earlier revisions of this role used a named volume.
-# Copy anything still in it across; the volume itself is left untouched for recovery.
-- name: Look for a legacy sftp_data named volume
-  ansible.builtin.command:
-    cmd: docker volume inspect -f '{% raw %}{{ .Mountpoint }}{% endraw %}' edge_sftp_data
-  register: legacy_sftp_volume
-  changed_when: false
-  failed_when: false
-  become: true
-
-- name: Migrate legacy sftp_data contents into the bind mount (only if the bind mount is empty)
-  ansible.builtin.shell:
-    cmd: >
-      set -o pipefail;
-      if [ -n "$(ls -A {{ sftp_data_dir }} 2>/dev/null)" ]; then
-        echo "bind mount not empty - skipping"; exit 0;
-      fi;
-      if [ -z "$(ls -A {{ legacy_sftp_volume.stdout | trim }} 2>/dev/null)" ]; then
-        echo "legacy volume empty - nothing to migrate"; exit 0;
-      fi;
-      rsync -a {{ legacy_sftp_volume.stdout | trim }}/ {{ sftp_data_dir }}/ &&
-      chown -R 1001:1001 {{ sftp_data_dir }} &&
-      echo "migrated"
-    executable: /bin/bash
-  register: sftp_migration
-  changed_when: "'migrated' in sftp_migration.stdout"
-  become: true
-  when: legacy_sftp_volume.rc == 0
-
 - name: Generate self-signed TLS cert for Vault (overlay IP + loopback SAN)
   ansible.builtin.command:
     cmd: >

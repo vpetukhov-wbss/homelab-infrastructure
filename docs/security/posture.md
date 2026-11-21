@@ -149,7 +149,7 @@ root through the `docker` group — so root on node1 meant root on node3.
 | **`docker` group = root** | The admin SSH key alone is root on every node | Move compose tasks to `become`, drop the group |
 | **Laptop SSH is Internet-forwarded** | The one genuinely public attack surface | Remove the forward; use WireGuard for remote access |
 | **Legacy `wg0` on node1 and the laptop** | Two never-used tunnels, same address, open port | Decide on one remote-access design; remove the other |
-| **Single reused sudo password** | One password for every node | Per-host once Vault is initialised |
+| **Single reused sudo password** | One password for every node | Per-host passwords, kept in Vault (initialised, still empty) |
 | **PostgreSQL superuser over the overlay** | Every user incl. superuser may connect from `10.44.0.0/24` | A `pg_read_all_data` role for backups; superuser local-only |
 | **End-of-life versions** | Gitea 1.22, RabbitMQ 3.13 no longer receive fixes | Planned upgrades, after a backup |
 
@@ -186,10 +186,10 @@ for p in 3000 2223 5432 6379 8080 26379; do timeout 3 bash -c "</dev/tcp/10.44.0
 sudo ip route del 10.44.0.3/32 via 192.168.0.103
 
 # The guard itself, and the fallback route
-ansible homelab -b -m shell -a "iptables -t raw -S HOMELAB-OVERLAY-GUARD; ip route show type unreachable"
+ansible edge:data_primary:data_replica -b -m shell -a "iptables -t raw -S HOMELAB-OVERLAY-GUARD; ip route show type unreachable"
 
 # Overlay health: every peer should have a recent handshake
-ansible homelab -b -m shell -a "wg show wg1 latest-handshakes"
+ansible edge:data_primary:data_replica -b -m shell -a "wg show wg1 latest-handshakes"
 ~~~
 
 Re-running `playbooks/security.yml` re-applies and re-asserts SSH hardening, the firewall
