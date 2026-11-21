@@ -1,0 +1,6 @@
+---
+- name: Restart pulse-agent timer
+  ansible.builtin.systemd_service:
+    name: pulse-agent.timer
+    daemon_reload: true
+    state: restarted

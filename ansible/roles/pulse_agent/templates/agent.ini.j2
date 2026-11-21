@@ -1,0 +1,22 @@
+[agent]
+ingest_url = {{ pulse_agent_ingest_url }}
+state_directory = /var/lib/pulse-agent
+timeout_seconds = 2
+max_pending = 512
+max_age_seconds = 86400
+send_limit = 4
+
+[filesystems]
+{% for alias, path in pulse_agent_filesystems | dictsort %}
+{{ alias }} = {{ path }}
+{% endfor %}
+
+[network]
+{% for alias, device in pulse_agent_interfaces | dictsort %}
+{{ alias }} = {{ device }}
+{% endfor %}
+
+[temperatures]
+{% for alias, path in pulse_agent_temperatures | dictsort %}
+{{ alias }} = {{ path }}
+{% endfor %}

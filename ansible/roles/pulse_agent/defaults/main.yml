@@ -1,0 +1,7 @@
+---
+pulse_agent_ingest_url: ""
+pulse_agent_python_path: /usr/bin/python3
+pulse_agent_filesystems:
+  root: /
+pulse_agent_interfaces: {}
+pulse_agent_temperatures: {}

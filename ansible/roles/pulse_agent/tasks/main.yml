@@ -1,0 +1,82 @@
+---
+- name: Require the private ingest endpoint
+  ansible.builtin.assert:
+    that:
+      - pulse_agent_ingest_url is match('^https?://[^/]+/internal/v1/telemetry$')
+    fail_msg: Configure the private HomeLab Pulse ingest URL in the inventory.
+
+- name: Require a per-host ingest credential
+  ansible.builtin.assert:
+    that:
+      - vault_pulse_agent_ingest_token is defined
+      - vault_pulse_agent_ingest_token | default('') | length > 0
+  no_log: true
+
+- name: Create the agent system account
+  ansible.builtin.user:
+    name: pulse-agent
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create owned package and configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/pulse-agent/pulse_agent
+    - /etc/pulse-agent
+
+- name: Install the Python package source
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../apps/homelab-pulse/agent/src/pulse_agent/"
+    dest: /opt/pulse-agent/pulse_agent/
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: Install the per-host ingest token
+  ansible.builtin.copy:
+    content: "{{ vault_pulse_agent_ingest_token }}"
+    dest: /etc/pulse-agent/ingest-token
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Render approved metrics and private endpoint
+  ansible.builtin.template:
+    src: agent.ini.j2
+    dest: /etc/pulse-agent/agent.ini
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install agent units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - pulse-agent.service
+    - pulse-agent.timer
+  notify: Restart pulse-agent timer
+
+- name: Start the timer
+  ansible.builtin.systemd_service:
+    name: pulse-agent.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Read effective timer state
+  ansible.builtin.command:
+    argv: [systemctl, is-active, pulse-agent.timer]
+  changed_when: false
+  when: not ansible_check_mode

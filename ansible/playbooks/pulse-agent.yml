@@ -1,0 +1,6 @@
+---
+- name: Deploy the HomeLab Pulse host collector
+  hosts: pulse_agents
+  become: true
+  roles:
+    - pulse_agent

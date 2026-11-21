@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HomeLab Pulse host sample",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sampleId", "observedAt", "kind", "values"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sampleId": { "type": "string", "format": "uuid" },
+    "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "kind": { "const": "host" },
+    "values": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootId", "cpuTimesSeconds", "memory", "loadAverage", "uptimeSeconds", "filesystems", "network", "temperaturesCelsius"],
+      "properties": {
+        "bootId": { "type": "string", "format": "uuid" },
+        "cpuTimesSeconds": {
+          "type": "object",
+          "required": ["user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal"],
+          "maxProperties": 8,
+          "additionalProperties": { "$ref": "#/$defs/nonnegative" }
+        },
+        "memory": {
+          "type": "object",
+          "required": ["totalBytes", "availableBytes", "swapTotalBytes", "swapFreeBytes"],
+          "maxProperties": 4,
+          "additionalProperties": { "$ref": "#/$defs/bytes" }
+        },
+        "loadAverage": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/nonnegative" }
+        },
+        "uptimeSeconds": { "$ref": "#/$defs/nonnegative" },
+        "filesystems": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["totalBytes", "availableBytes"],
+            "maxProperties": 2,
+            "additionalProperties": { "$ref": "#/$defs/bytes" }
+          }
+        },
+        "network": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["rxBytes", "txBytes"],
+            "maxProperties": 2,
+            "additionalProperties": { "$ref": "#/$defs/bytes" }
+          }
+        },
+        "temperaturesCelsius": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "nonnegative": { "type": "number", "minimum": 0 }
+  }
+}

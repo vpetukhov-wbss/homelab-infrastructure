@@ -1,0 +1,20 @@
+[Unit]
+Description=Collect and send HomeLab Pulse host telemetry
+After=network-online.target wg-quick@wg1.service homelab-overlay-guard.service
+Wants=network-online.target
+Requisite=wg-quick@wg1.service homelab-overlay-guard.service
+
+[Service]
+Type=oneshot
+User=pulse-agent
+WorkingDirectory=/opt/pulse-agent
+ExecStart={{ pulse_agent_python_path }} -B -m pulse_agent --config /etc/pulse-agent/agent.ini tick
+LoadCredential=ingest-token:/etc/pulse-agent/ingest-token
+StateDirectory=pulse-agent
+StateDirectoryMode=0700
+UMask=0077
+TimeoutStartSec=12s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
