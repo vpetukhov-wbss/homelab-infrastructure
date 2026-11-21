@@ -24,8 +24,9 @@ purpose (see `docs/PROJECT-CONTEXT.md` §2).
   with `--ssh-port N`, sshd listens on N instead of 22 (plain `ssh.service`, socket
   activation off) — node4 uses 2345 so the router's forward, the owner's remote path,
   keeps working after the reinstall
-- Wired NIC on DHCP (`en*`, optional). With `--wifi-*`: also Wi-Fi on DHCP, joined both
-  during the install and after it
+- Wired NIC on DHCP (`en*`, optional). With `--wifi-*`: Wi-Fi on DHCP for the installed
+  system, joined on its first boot. Without a cable the install itself runs offline
+  from the stick
 - Security updates applied during install; UTC; no crash-kernel reservation
 - Suspend/hibernate masked and lid switch ignored, so laptop hardware stays reachable
   until Ansible takes over
@@ -44,6 +45,16 @@ nmcli -s -g 802-11-wireless-security.psk connection show "<SSID>" \
  | python3 -c 'import sys,hashlib; p=sys.stdin.read().rstrip("\n"); print(hashlib.pbkdf2_hmac("sha1",p.encode(),sys.argv[1].encode(),4096,32).hex())' "<SSID>" \
  > psk.hex && chmod 600 psk.hex
 ~~~
+
+**The installer itself never touches Wi-Fi.** An autoinstall `network:` section is
+applied in the live session with `netplan apply`, which synchronously starts
+`netplan-regdom.service` (`iw reg set`; `iw` is not on the ISO) and
+`netplan-wpa-*.service` (`wpa_supplicant` only reaches the live session after the card
+is detected). Either failing aborts the install before the disk is touched. That is
+what a VM test of the first stick hit on 2026-11-21. So the build writes
+`/etc/netplan/60-homelab-wifi.yaml` (mode 600) into the *target* in `late-commands`.
+It sets the country through `cfg80211 ieee80211_regdom=` (rules from `wireless-regdb`,
+already in the image) instead of `iw`.
 
 `wpasupplicant` is not in the Ubuntu Server image; the build adds it to `packages`
 (installed offline from the ISO's pool), otherwise the installed system could not join

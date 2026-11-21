@@ -80,14 +80,25 @@ the password manager never shares a host with CI jobs.
 - [x] The owner set the homelab password (`scripts/set-homelab-password.sh`, 2026-11-21).
   All 5 ansible-vault files were re-keyed.
 - [x] The recovery bundle was rebuilt with that password
-  (`homelab-recovery-20261121-1650.tar.gpg`, rebuilt after the Vault work). Verified: it opens with the new password
+  (`homelab-recovery-20261121-1821.tar.gpg`, rebuilt after the Vault work and the VM test). Verified: it opens with the new password
   (119 entries) and includes the GitHub deploy key and the laptop's `/etc/wireguard`.
   The old bundle was deleted.
 - [ ] The owner copies the bundle off the laptop, together with `RESTORE.txt`.
 - [x] The installer stick was rebuilt and verified on 2026-11-21. It carries Wi-Fi, SSH
   on 2345 so the router's forward keeps working, and the bundle. It was written and read
-  back; image sha256 `f2de7cf7…`. Its `homelab-restore` also fast-forwards the
+  back; image sha256 `b91c9c8f…`, built with the three fixes found by the VM test. Its `homelab-restore` also fast-forwards the
   repository from GitHub, so commits pushed after the stick was made are not lost.
+- [x] The stick's exact configuration was tested end to end in a UEFI VM on 2026-11-21.
+  The VM had the disk serial set and no network, like the laptop without a cable.
+  The test found three bugs before any hardware was wiped:
+  - Wi-Fi in the live installer aborted the install (`iw` is missing);
+  - `homelab-restore` could not read its own staged files as the user;
+  - `homelab-restore` hit a stale apt index after the offline install.
+  After the fixes:
+  - install, restore and GitHub fast-forward all pass;
+  - `ansible homelab -m ping` from the restored VM reaches node1–3;
+  - the deploy key can push;
+  - Claude Code installs.
 - [ ] The owner saves personal data that the bundle does not carry.
 - [ ] Install, then run `sudo homelab-restore`.
 

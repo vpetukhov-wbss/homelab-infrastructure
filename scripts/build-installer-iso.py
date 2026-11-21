@@ -8,9 +8,10 @@ The boot records are replayed unchanged, so the image boots exactly like the
 original (BIOS and UEFI, Secure Boot shim intact).
 
 Optional:
-  --wifi-*            join a WPA2-PSK network during and after the install. Give the
-                      64-hex PSK (derived from passphrase + SSID), never the passphrase:
-                      it grants network access but does not reveal the password.
+  --wifi-*            the INSTALLED system joins a WPA2-PSK network on first boot (the
+                      install itself runs offline from the ISO unless a cable is in).
+                      Give the 64-hex PSK (derived from passphrase + SSID), never the
+                      passphrase: it grants network access but does not reveal it.
   --recovery-bundle   embed an ENCRYPTED controller bundle plus the homelab-restore
                       tool; after the first login, `sudo homelab-restore` asks for the
                       password and rebuilds keys, vault, inventory and repository.
@@ -35,6 +36,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -109,16 +111,27 @@ def render(serial: str, keys: list[str], schema: Path | None, wifi: dict | None,
     ai["ssh"]["authorized-keys"] = keys
 
     if wifi:
-        ai["network"]["wifis"] = {
-            wifi["iface"]: {
-                "dhcp4": True,
-                "dhcp6": False,
-                "regulatory-domain": wifi["country"],
-                "access-points": {wifi["ssid"]: {"password": wifi["psk"]}},
-            }
-        }
-        # Not in the server image; the ISO's offline pool has it. Without it the
-        # installed system cannot join Wi-Fi at first boot.
+        # Wi-Fi is configured for the INSTALLED system only, never in the live installer:
+        # an autoinstall `network:` section is applied there with `netplan apply`, which
+        # synchronously starts netplan-regdom.service (`iw reg set`; iw is not on the ISO)
+        # and netplan-wpa-*.service (wpa_supplicant is only added to the live session after
+        # the card is detected). Either failing aborts the whole install - found in a VM
+        # test on 2026-11-21. Without a cable the install runs offline from the ISO pool,
+        # and the machine joins Wi-Fi on its first boot.
+        wifi_netplan = {"network": {"version": 2, "wifis": {wifi["iface"]: {
+            "dhcp4": True,
+            "dhcp6": False,
+            "access-points": {wifi["ssid"]: {"password": wifi["psk"]}},
+        }}}}
+        b64 = base64.b64encode(yaml.safe_dump(wifi_netplan, sort_keys=False).encode()).decode()
+        ai["late-commands"] += [
+            f"echo {b64} | base64 -d > /target/etc/netplan/60-homelab-wifi.yaml",
+            "chmod 600 /target/etc/netplan/60-homelab-wifi.yaml",
+            # Regulatory domain without iw: cfg80211 reads it at module load and
+            # wireless-regdb (in the server image) supplies the rules.
+            f"printf 'options cfg80211 ieee80211_regdom={wifi['country']}\\n' > /target/etc/modprobe.d/homelab-regdom.conf",
+        ]
+        # Not in the server image; the ISO's offline pool has it and its dependencies.
         ai.setdefault("packages", [])
         if "wpasupplicant" not in ai["packages"]:
             ai["packages"].append("wpasupplicant")
