@@ -429,7 +429,7 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **Laptop reinstall as node4** | Installer stick built (Wi-Fi + recovery restore + SSH kept on 2345 so the router's forward — the owner's only remote path — keeps working); waits for the user's new homelab password, after which the bundle and the stick are rebuilt. |
+| **Laptop reinstall as node4** | Ready since 2026-11-21: homelab password set, bundle rebuilt, stick written and read back (Wi-Fi, SSH kept on 2345 so the router's forward — the owner's only remote path — keeps working, bundle + `homelab-restore`). Waiting on the owner: copy the bundle off the laptop, save personal data, install (username `vpetukhov`, the current sudo password), then `sudo homelab-restore`. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | Planned on node4. |

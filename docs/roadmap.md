@@ -77,10 +77,16 @@ the password manager never shares a host with CI jobs.
 
 ## M2 — node4 reinstalled as a server
 
-- [ ] The owner sets the homelab password (`scripts/set-homelab-password.sh`).
-- [ ] Rebuild the recovery bundle with that password and copy it off the laptop.
-- [ ] Rebuild and verify the installer stick: Wi-Fi, SSH on 2345 so the router's forward
-  keeps working, and the bundle.
+- [x] The owner set the homelab password (`scripts/set-homelab-password.sh`, 2026-11-21).
+  All 5 ansible-vault files were re-keyed.
+- [x] The recovery bundle was rebuilt with that password
+  (`homelab-recovery-20261121-1613.tar.gpg`). Verified: it opens with the new password
+  (119 entries) and includes the GitHub deploy key and the laptop's `/etc/wireguard`.
+  The old bundle was deleted.
+- [ ] The owner copies the bundle off the laptop, together with `RESTORE.txt`.
+- [x] The installer stick was rebuilt and verified on 2026-11-21. It carries Wi-Fi, SSH
+  on 2345 so the router's forward keeps working, and the bundle. It was written and read
+  back; image sha256 `21d64798…`.
 - [ ] The owner saves personal data that the bundle does not carry.
 - [ ] Install, then run `sudo homelab-restore`.
 
