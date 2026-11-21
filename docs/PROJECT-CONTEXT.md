@@ -327,6 +327,19 @@ lsyncd passes `-s` (`--protect-args`), which rrsync rejects ("option -s has been
 disabled"), and `default.rsyncssh` runs plain `ssh mv/rm`, which a forced command
 refuses. Use `default.rsync` with `protect_args = false`.
 
+### Any `netplan apply` failure aborts an autoinstall
+
+The first node4 stick configured Wi-Fi in the autoinstall `network:` section with
+`regulatory-domain: BG`. In the live installer netplan starts `netplan-regdom.service`
+synchronously, and that runs `iw reg set`. `iw` is not on the Ubuntu Server ISO, so
+`netplan apply` returned 1 and subiquity stopped at "An error occurred". A VM test
+with the stick's exact configuration caught it before the laptop was wiped. Wi-Fi is
+now written only into the installed system, and the country is set through a
+`cfg80211` module option.
+
+> **Test an installer in a VM with the real configuration before wiping hardware.**
+> Schema validation and source reading did not catch this. Running it did.
+
 ### A secret printed to a terminal ends up wherever the terminal is copied
 
 The first `vault operator init` was pasted, output and all, into a chat on 2026-11-21 —

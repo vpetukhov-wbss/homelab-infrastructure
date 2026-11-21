@@ -69,13 +69,15 @@ R="$H/Projects/homelab-infrastructure"
 if [[ -e "$R" ]]; then
   echo "  $R exists - left untouched"
 else
+  # The stage is root-only: hand the user private copies of what they must read.
   UT="$(as_user mktemp -d)"
   install -m 600 -o "$U" -g "$U" "$STAGE/homelab-infrastructure.bundle" "$UT/repo.bundle"
+  install -m 600 -o "$U" -g "$U" "$STAGE/repo-extra/worktree-and-ignored.tar" "$UT/extra.tar"
   install -d -o "$U" -g "$U" "$H/Projects"
   as_user git clone -q "$UT/repo.bundle" "$R"
   as_user git -C "$R" checkout -q "$(cat "$STAGE/BRANCH")"
   as_user git -C "$R" remote set-url origin "$(cat "$STAGE/ORIGIN")"
-  as_user tar -xf "$STAGE/repo-extra/worktree-and-ignored.tar" -C "$R"
+  as_user tar -xf "$UT/extra.tar" -C "$R"
   rm -rf "$UT"
   echo "  repository + inventory + vault files ... restored ($(as_user git -C "$R" rev-list --count HEAD) commits on $(cat "$STAGE/BRANCH"))"
   # The stick's bundle can be older than GitHub: fast-forward when the remote is reachable
@@ -102,6 +104,9 @@ if [[ -f "$STAGE/etc-wireguard.tar" ]]; then
 fi
 
 # 7. Tooling: git + the Ansible virtualenv the playbooks expect.
+# Refresh the package lists first: an install without a cable runs offline from the ISO,
+# and its lists point at versions the mirror no longer serves (404 on install).
+apt-get update -qq >/dev/null
 apt-get install -y -qq git python3-venv >/dev/null
 if [[ ! -x "$H/homelab/.venv/bin/ansible-playbook" ]]; then
   echo "  creating the Ansible virtualenv (needs network) ..."
@@ -115,7 +120,7 @@ read -r -p "Install Claude Code for $U now? [Y/n] " answer
 case "$answer" in
   n*|N*) echo "  Claude Code ............................ skipped" ;;
   *) as_user bash -c 'curl -fsSL https://claude.ai/install.sh | bash' \
-       && echo "  Claude Code ............................ installed (run: claude)" \
+       && echo "  Claude Code ............................ installed: open a new login shell, then run claude and sign in" \
        || echo "  Claude Code install failed - retry later: curl -fsSL https://claude.ai/install.sh | bash" ;;
 esac
 
