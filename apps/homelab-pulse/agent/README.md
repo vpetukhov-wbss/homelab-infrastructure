@@ -41,7 +41,19 @@ The host cycle can attach `diskSmart` readings from the optional `[smart_snapsho
 sudo smartctl -j -H -A /dev/nvme0n1 | PYTHONPATH=src python3 -m pulse_agent smart-snapshot
 ```
 
-For periodic telemetry, an external local producer should update one normalized file per approved disk about once a minute. Write to a temporary file in the destination directory and rename it over the mapped file after normalization succeeds. Keep the files readable by `pulse-agent` and the directory writable only by the producer. The normalizer preserves the source observation time and selected health, temperature, NVMe wear and error counters, or recognized ATA sector counters. It omits serial numbers, paths, command lines and raw attributes. Missing, malformed, failed or future-dated snapshots report `unavailable`. Readings older than three minutes retain their observation time with `stale` status and omit the metric values.
+For managed polling, set `pulse_agent_smart_devices` in the private Ansible inventory. Use the basename of each approved SATA disk or NVMe namespace. For example:
+
+```yaml
+pulse_agent_smart_devices:
+  archive: sda
+  system: nvme0n1
+```
+
+The host needs `smartctl` from `smartmontools`, which the host hardening role provides. Ansible enables a separate 60-second systemd timer when the mapping is nonempty. Its service reads only the listed device nodes, runs without network access, and writes group-readable normalized snapshots to `/run/pulse-smart` using atomic file replacement. SATA probes skip standby disks. The service gives each device five seconds to respond. Clear the mapping to stop managed polling. Review kernel device names after hardware changes.
+
+`pulse_agent_smart_snapshots` still accepts files from an external local producer. Keep them readable by `pulse-agent` and writable only by their producer. When both settings use an alias, the managed snapshot takes precedence.
+
+The normalizer preserves the source observation time and selected health, temperature, NVMe wear and error counters, or recognized ATA sector counters. It omits serial numbers, paths, command lines and raw attributes. Missing, malformed, failed or future-dated snapshots report `unavailable`. Readings older than three minutes retain their observation time with `stale` status and omit the metric values.
 
 ## Delivery
 
@@ -63,10 +75,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `vault_pulse_agent_ingest_token` is unique for each host and comes from private encrypted inventory.
 - `pulse_agent_filesystems`, `pulse_agent_interfaces`, `pulse_agent_temperatures` and `pulse_agent_fans` map approved aliases to host resources.
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
-- `pulse_agent_smart_snapshots` renders the optional mappings for an external local SMART producer.
+- `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The scaffold covers the fast host cycle, queue, HTTP transport and deployment templates. Automated SMART snapshot production, Docker and database, broker, web server and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, queue, HTTP transport and deployment templates. Docker, database, broker, web server and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

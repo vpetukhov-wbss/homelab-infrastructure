@@ -1,0 +1,31 @@
+[Unit]
+Description=Read approved disks for HomeLab Pulse
+
+[Service]
+Type=oneshot
+User=root
+Group=pulse-agent
+WorkingDirectory=/opt/pulse-agent
+ExecStart={{ pulse_agent_python_path }} -B -m pulse_agent.smart_probe /etc/pulse-agent/smart-devices.json /run/pulse-smart
+RuntimeDirectory=pulse-smart
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0027
+TimeoutStartSec=50s
+DevicePolicy=closed
+{% for device in pulse_agent_smart_devices.values() | unique | sort %}
+DeviceAllow=/dev/{{ device }} r
+{% endfor %}
+CapabilityBoundingSet=CAP_SYS_RAWIO{{ ' CAP_SYS_ADMIN' if pulse_agent_smart_devices.values() | select('match', '^nvme') | list else '' }}
+NoNewPrivileges=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+InaccessiblePaths=-/etc/pulse-agent/ingest-token -/var/lib/pulse-agent
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+SystemCallFilter=~@mount

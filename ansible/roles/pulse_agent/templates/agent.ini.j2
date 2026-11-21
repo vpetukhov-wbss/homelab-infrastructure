@@ -33,5 +33,10 @@ send_limit = 4
 
 [smart_snapshots]
 {% for alias, path in pulse_agent_smart_snapshots | dictsort %}
+{% if alias not in pulse_agent_smart_devices %}
 {{ alias }} = {{ path }}
+{% endif %}
+{% endfor %}
+{% for alias in pulse_agent_smart_devices | sort %}
+{{ alias }} = /run/pulse-smart/{{ alias }}.json
 {% endfor %}

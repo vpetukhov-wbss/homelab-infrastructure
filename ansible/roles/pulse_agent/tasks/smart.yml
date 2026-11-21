@@ -1,0 +1,75 @@
+---
+- name: Require a mapping for SMART devices
+  ansible.builtin.assert:
+    that:
+      - pulse_agent_smart_devices is mapping
+
+- name: Validate SMART aliases and device names
+  ansible.builtin.assert:
+    that:
+      - item.key is string and item.key is match('^[a-z][a-z0-9_-]{0,31}\Z')
+      - item.value is string and item.value is match('^(sd[a-z]+|nvme[0-9]+n[0-9]+)\Z')
+    fail_msg: Configure a public alias and the basename of a direct SATA or NVMe disk.
+    quiet: true
+  loop: "{{ pulse_agent_smart_devices | dict2items }}"
+
+- name: Install the SMART producer configuration and units
+  when: pulse_agent_smart_devices | length > 0
+  block:
+    - name: Check the local smartctl binary
+      ansible.builtin.stat:
+        path: /usr/sbin/smartctl
+      register: pulse_agent_smartctl
+
+    - name: Require smartmontools from the host hardening role
+      ansible.builtin.assert:
+        that:
+          - pulse_agent_smartctl.stat.executable | default(false)
+        fail_msg: Install smartmontools on the host before enabling the Pulse SMART producer.
+
+    - name: Write the root-owned SMART device list
+      ansible.builtin.copy:
+        content: "{{ pulse_agent_smart_devices | to_nice_json }}\n"
+        dest: /etc/pulse-agent/smart-devices.json
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install SMART systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - pulse-smart.service
+        - pulse-smart.timer
+
+    - name: Enable the SMART polling timer
+      ansible.builtin.systemd_service:
+        name: pulse-smart.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+
+- name: Stop previously configured SMART polling when disabled
+  when: pulse_agent_smart_devices | length == 0
+  block:
+    - name: Check for the SMART timer unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/pulse-smart.timer
+      register: pulse_agent_smart_timer
+
+    - name: Disable the installed SMART timer
+      ansible.builtin.systemd_service:
+        name: pulse-smart.timer
+        enabled: false
+        state: stopped
+      when: pulse_agent_smart_timer.stat.exists
+
+    - name: Stop any in-flight SMART probe
+      ansible.builtin.systemd_service:
+        name: pulse-smart.service
+        state: stopped
+      when: pulse_agent_smart_timer.stat.exists

@@ -12,9 +12,15 @@
       - vault_pulse_agent_ingest_token | default('') | length > 0
   no_log: true
 
+- name: Create the agent system group
+  ansible.builtin.group:
+    name: pulse-agent
+    system: true
+
 - name: Create the agent system account
   ansible.builtin.user:
     name: pulse-agent
+    group: pulse-agent
     system: true
     create_home: false
     shell: /usr/sbin/nologin
@@ -47,6 +53,9 @@
     group: root
     mode: "0600"
   no_log: true
+
+- name: Configure the local SMART producer
+  ansible.builtin.import_tasks: smart.yml
 
 - name: Render approved metrics and private endpoint
   ansible.builtin.template:
