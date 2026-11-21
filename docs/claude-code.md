@@ -4,6 +4,9 @@ Claude Code runs on the controller, which is node4 once the laptop is reinstalle
 works on this repository the way a small infrastructure team would. The shared setup is
 committed; personal settings and credentials are not.
 
+This repository is built with Claude Code, and the README badge says so openly. Every
+commit is authored by the owner and carries no AI co-author line (see `CLAUDE.md`).
+
 ## Structure
 
 | Path | Purpose |

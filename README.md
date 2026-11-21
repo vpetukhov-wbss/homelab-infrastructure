@@ -8,6 +8,7 @@
 ![Redis](https://img.shields.io/badge/Redis-7.4%20%2B%20Sentinel-DC382D?logo=redis&logoColor=white)
 ![Gitea](https://img.shields.io/badge/Git%20%2B%20CI-Gitea%20Actions-609926?logo=gitea&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
+[![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-D97757?logo=claude&logoColor=white)](docs/claude-code.md)
 
 A self-hosted platform on four second-hand machines, configured entirely with Ansible
 and run by one person. The repository is also an honest record of how it was built,
