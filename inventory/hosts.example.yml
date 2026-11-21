@@ -1,0 +1,49 @@
+# Template for inventory/hosts.yml — the real file is git-ignored.
+#
+# 1. Copy this file to inventory/hosts.yml and replace every 192.0.2.x (a documentation
+#    range) with the node's real LAN address; reserve those addresses on the router.
+# 2. Pin each host key under its inventory name (host_key_checking is on), after
+#    comparing the fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`
+#    on the console of that machine:
+#      ssh-keyscan -p <port> <ip> 2>/dev/null | sed 's/^[^ ]*/<inventory-name>/' >> ~/.ssh/known_hosts
+# 3. Create the secrets as described in inventory/secrets.example.yml.
+#
+# Group names say which role was INSTALLED on a host. Failover moves the live roles,
+# so roles discover the current PostgreSQL primary / Redis master at run time.
+all:
+  vars:
+    ansible_user: admin                 # the user created at the installer's identity screen
+    ansible_ssh_private_key_file: ~/.ssh/homelab-controller
+    ansible_python_interpreter: /usr/bin/python3
+    wg_overlay_cidr: "10.44.0.0/24"
+    lan_cidr: "192.0.2.0/24"            # SSH is accepted from this subnet and from wg1 only
+    controller_lan_ip: 192.0.2.35       # exempt from Fail2Ban; update if its lease moves
+  children:
+    homelab:
+      children:
+        edge:                           # Caddy, Vault, SFTP, RabbitMQ, Sentinel, backup job
+          hosts:
+            node1-gateway:
+              ansible_host: 192.0.2.101
+              ansible_port: 2222
+              wg_overlay_ip: 10.44.0.1
+              ansible_ssh_common_args: "-o HostKeyAlias=node1-gateway"
+        data_primary:                   # PostgreSQL primary + Redis, Sentinel
+          hosts:
+            node2:
+              ansible_host: 192.0.2.28
+              ansible_port: 22
+              wg_overlay_ip: 10.44.0.2
+              ansible_ssh_common_args: "-o HostKeyAlias=node2"
+        data_replica:                   # PostgreSQL standby + Redis, Sentinel, app host, Gitea, mirror
+          hosts:
+            node3-data:
+              ansible_host: 192.0.2.103
+              ansible_port: 22
+              wg_overlay_ip: 10.44.0.3
+              ansible_ssh_common_args: "-o HostKeyAlias=node3-data"
+        controller:                     # node4: where Ansible and Claude Code run
+          hosts:
+            node4-laptop:
+              ansible_connection: local
+              wg_overlay_ip: 10.44.0.4  # reserved; node4 joins wg1 in roadmap M3

@@ -1,0 +1,12 @@
+---
+# ansible-lint configuration. Run from the repository root with the controller's
+# virtualenv (it carries the collections the roles use):
+#   ~/homelab/.venv/bin/ansible-lint ansible/playbooks ansible/roles
+skip_list:
+  # The roles use short domain prefixes (pg_, redis_, f2b_, mirror_, backup_) on purpose.
+  # Renaming ~100 variables across roles that run on live data nodes is churn without
+  # benefit; new roles should still prefix their variables.
+  - var-naming[no-role-prefix]
+exclude_paths:
+  - installer/build/
+  - .claude/

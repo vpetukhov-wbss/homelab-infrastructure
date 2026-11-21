@@ -1,5 +1,5 @@
 ---
-# WireGuard overlay mesh across the 3 wired ThinkCentres.
+# WireGuard overlay mesh across the three wired servers.
 # Single play (linear strategy) so every peer's pubkey is known before templating.
 - name: WireGuard overlay (wg1 / 10.44.0.0/24)
   hosts: edge:data_primary:data_replica

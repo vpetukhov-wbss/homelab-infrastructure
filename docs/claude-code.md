@@ -1,90 +1,62 @@
-# Claude Code Project Setup
+# Claude Code in this repository
 
-This repository ships a shared Claude Code configuration so Claude operates like a small infrastructure engineering team rather than a generic coding assistant.
+Claude Code runs on the controller, which is node4 once the laptop is reinstalled. It
+works on this repository the way a small infrastructure team would. The shared setup is
+committed; personal settings and credentials are not.
 
 ## Structure
 
-- `CLAUDE.md`: always-on mission, safety rules, boundaries, team routing.
-- `.claude/rules/`: global and path-scoped conventions.
-- `.claude/agents/`: specialist subagents with isolated contexts.
-- `.claude/skills/`: reusable operational workflows exposed as slash skills.
+| Path | Purpose |
+|---|---|
+| `CLAUDE.md` | Always loaded: goal, safety rules, tool boundaries, quality gates, which document owns what |
+| `.claude/rules/` | Conventions scoped to paths (Ansible, compose templates, scripts, docs, security) |
+| `.claude/agents/` | Specialist subagents with their own context |
+| `.claude/skills/` | Reusable workflows, invoked as `/skill-name` |
+| `.claude/hooks/` | Deterministic guardrails that run before tools (see below) |
 
-The root file intentionally stays focused. Long procedures live in skills and load only when needed.
-
-## Specialist team
+## Specialists
 
 | Agent | Responsibility |
 |---|---|
-| platform-architect | topology, HA, service placement, capacity |
-| linux-sysadmin | Ubuntu, systemd, storage, host troubleshooting |
-| network-security-engineer | WireGuard, routing, DNS, firewall, proxies, TLS |
-| data-platform-sre | PostgreSQL, SQL Server, MongoDB, Redis, recovery |
-| iac-engineer | Terraform, Ansible, inventory, bootstrap |
-| cicd-engineer | Jenkins, Gitea, pipelines, agents, releases |
-| sre-operations | monitoring, incidents, backups, DR |
-| security-reviewer | infrastructure security review |
-| technical-project-manager | roadmap, dependencies, acceptance criteria |
-
-Claude can delegate automatically when a request matches an agent description. You can also request one explicitly.
+| `platform-architect` | topology, placement, capacity, HA claims |
+| `linux-sysadmin` | Ubuntu, systemd, storage, SSH, Docker hosts |
+| `network-security-engineer` | WireGuard, firewall and overlay guard, Caddy/nginx, TLS, exposure |
+| `data-platform-sre` | PostgreSQL, Redis/Sentinel, RabbitMQ, SQLite, MongoDB, backup and restore |
+| `iac-engineer` | Ansible roles and inventory, the installer and recovery tooling |
+| `cicd-engineer` | Gitea, Gitea Actions and act_runner, GitHub publishing |
+| `sre-operations` | monitoring, incidents, backups, DR drills, runbooks |
+| `security-reviewer` | review before merge or deployment |
+| `technical-project-manager` | roadmap, sequencing, acceptance criteria |
 
 ## Skills
 
 ~~~text
-/plan-change
-/bootstrap-node
-/deploy-node
-/service-onboard
-/security-review
-/incident-response
-/dr-drill
-/review-infrastructure
-/project-status
+/plan-change            plan before multi-node, security, data or destructive work
+/bootstrap-node         bare metal → installer stick → reachable, managed host
+/deploy-node            converge one node with Ansible and verify the live state
+/service-onboard        add a service end to end (placement → backup → catalog row)
+/security-review        review staged changes
+/incident-response      diagnose and stabilise an outage
+/dr-drill               prove a restore, with measured RPO/RTO
+/review-infrastructure  a review from several disciplines at once
+/project-status         evidence-based status against docs/roadmap.md
 ~~~
 
-Typical flow:
+## Safety hooks
 
-~~~text
-/plan-change Implement PostgreSQL primary/replica with backup and restore
-~~~
+`.claude/settings.json` registers two `PreToolUse` hooks. They need `bash` and `jq`.
 
-Then implement in reviewable slices and finish with:
+- `safety-gate.sh` blocks a small set of clearly destructive shell patterns: force
+  push, `git reset --hard`, `rm -rf` at the root, `mkfs`/`wipefs`/raw disk writes,
+  Docker prune with volumes, disabling the firewall.
+- `protected-path-gate.sh` blocks reading or writing common secret, key and state paths.
 
-~~~text
-/review-infrastructure
-/security-review
-~~~
+They are guardrails, not a sandbox. The real protection comes from key-only SSH,
+firewalls, the overlay guard, ansible-vault, backups and human approval of disruptive
+steps.
 
-Outage:
+## Memory
 
-~~~text
-/incident-response PostgreSQL replica stopped receiving WAL
-~~~
-
-Recovery validation:
-
-~~~text
-/dr-drill PostgreSQL full-node-loss scenario
-~~~
-
-## Safety philosophy
-
-Prompt rules are not a replacement for deterministic controls. Real infrastructure should also use protected branches, Jenkins approvals, least-privilege credentials, Vault policies, host firewalls, restricted sudo, secret scanning, backup retention, and tested restores.
-
-Hooks/permissions can be added later after they are tested on the actual admin workstation. This avoids an untested blocking rule that breaks legitimate operations or creates false confidence.
-
-## Deterministic safety hooks
-
-The project also contains `.claude/settings.json` with PreToolUse hooks.
-
-- Bash operations pass through a small destructive-command gate.
-- Read/Write/Edit operations pass through a protected-path gate for common secret/key/state files.
-
-These hooks require Bash and `jq` on the workstation running Claude Code. Claude Code requires review of project hook changes before they take effect.
-
-The hooks are intentionally conservative and small. They do not replace least-privilege accounts, sudo policy, Vault, firewalls, branch protection, CI approvals, or operator judgment.
-
-See `.claude/hooks/README.md`.
-
-## Local/private configuration
-
-Do not commit Claude credentials, API keys, MCP secrets, private inventory, or machine-specific secret settings. Project agents/skills/rules are shared; personal preferences belong in user-level Claude configuration.
+Claude Code keeps project memory under `~/.claude/projects/<project>/memory/`. It holds
+the owner's working preferences, not secrets. The recovery bundle carries it, so a
+reinstalled controller remembers how the owner works.

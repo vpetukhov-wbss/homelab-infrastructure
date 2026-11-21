@@ -1,0 +1,3 @@
+# gitleaks findings reviewed and accepted. One fingerprint per line.
+# Prose in a skill file ("...TLS/auth, container privilege..."), not a credential; reviewed 2026-11-21.
+4c51f216e5cd3e30bde96bd4136ee1c718f5b465:.claude/skills/security-review/SKILL.md:generic-api-key:6

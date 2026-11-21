@@ -1,7 +1,7 @@
 # Security rules
 
 - Treat every committed byte as permanently public.
-- Never commit real secrets, tokens, passwords, private keys, Terraform state, or recovery material.
+- Never commit real secrets, tokens, passwords, private keys, decrypted ansible-vault files, the vault password, or recovery material.
 - Prefer placeholders or secure runtime references.
 - Administrative/backend services are private by default.
 - Public ingress terminates at the designated edge/gateway.

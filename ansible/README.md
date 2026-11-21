@@ -1,112 +1,120 @@
 # Ansible
 
-Ansible owns machine and service configuration.
+All machine and service configuration lives here. The roles are idempotent and **check
+their own effect**: they assert the live state (`sshd -T`, iptables, replication status,
+Sentinel quorum) instead of trusting that a task ran.
 
-Planned reusable roles:
+## Running
 
-- base
-- users
-- security
-- firewall
-- docker
-- wireguard
-- node_exporter
-- caddy
-- nginx
-- postgres
-- mongodb
-- redis
-- sqlserver
-- vault
-- jenkins
-- gitea
-- sftp
-- restic
-- prometheus
-- grafana
-- localstack
+~~~bash
+cd ansible                                   # ansible.cfg points at ../inventory/hosts.yml
+V=~/homelab/.venv/bin
+$V/ansible homelab -m ping                   # host keys are pinned, so there are no prompts
+$V/ansible-playbook playbooks/site.yml       # every layer, in order
+$V/ansible-playbook playbooks/edge.yml       # or a single layer
+~~~
 
-Roles should be idempotent, composable and driven by inventory/group variables rather than copied per host.
+- **Inventory and secrets.** The real inventory (`inventory/hosts.yml`) and the secrets
+  (`inventory/group_vars/homelab/*.yml`, ansible-vault) are git-ignored. To start from
+  scratch, copy [`inventory/hosts.example.yml`](../inventory/hosts.example.yml) and
+  follow [`inventory/secrets.example.yml`](../inventory/secrets.example.yml).
+- **Vault password.** Read from `~/.homelab_vault_pass` (see `ansible.cfg`). Change it
+  with `scripts/set-homelab-password.sh`.
+- **Image versions** are pinned in
+  [`inventory/group_vars/all/images.yml`](../inventory/group_vars/all/images.yml).
+- **Host keys** are pinned in `~/.ssh/known_hosts` under the inventory name
+  (`HostKeyAlias`), and `host_key_checking` is on.
 
-A full site playbook will eventually allow a new node to progress from bootstrap Ubuntu to its assigned role with one controlled workflow.
+## Inventory groups
 
----
+| Group | Host | Installed there |
+|---|---|---|
+| `edge` | node1-gateway | Caddy, Vault, SFTP, RabbitMQ, Sentinel, backup job |
+| `data_primary` | node2 | PostgreSQL primary + Redis, Sentinel |
+| `data_replica` | node3-data | PostgreSQL standby + Redis, Sentinel, app host, Gitea + runner, sync account |
+| `controller` | node4-laptop (local connection) | Fail2Ban only, until node4 is onboarded (roadmap M3) |
 
-## Implemented roles (status: live)
+A group name says which role was **installed** on the host. Failover moves the live
+roles; today the Redis master is on node3. That is why the roles discover the topology
+instead of trusting names.
 
-| Role | Purpose | Applied to |
-|------|---------|-----------|
-| `docker` | Docker Engine + Compose plugin (official repo, works on 22.04 & 24.04) | node2 (others pre-had it) |
-| `base_packages` | wireguard, ufw, rsync, lsyncd, chrony; enables IPv4 forwarding | all 3 ThinkCentres |
-| `wireguard` | wg1 overlay mesh (10.44.0.0/24), full mesh, keys generated per node | node1/node2/node3 |
-| `firewall` | ufw default-deny; allows only SSH + wg port + wg1 interface; edge also 80/443 | all 3 ThinkCentres |
-| `ssh_hardening` | key-only SSH, no root login; drop-in named `00-` so it beats `50-cloud-init.conf`, and asserts the effective `sshd -T` output | all 3 ThinkCentres |
-| `postgres_primary` | Postgres 16 primary (HDD-tuned) + Redis 7 primary; overlay-only bind | node2 |
-| `postgres_replica` | Postgres 16 streaming standby (pg_basebackup bootstrap, async) + Redis replica | node3 |
-| `redis_sentinel` | Redis Sentinel, quorum 2 of 3, monitoring `homelab-redis` | node1/node2/node3 |
-| `edge` | Caddy (the only public service) + Vault 1.18 (overlay-only, TLS) + SFTP-primary | node1 |
-| `sftp_mirror` | lsyncd one-way mirror of the SFTP tree to the standby, over the overlay; seeds root's `known_hosts` first | node1 → node3 |
-| `gitea` | Gitea + act_runner on the laptop's SSD, RAM-capped | node4/laptop |
-| `rabbitmq` | RabbitMQ 3.13 + management UI, overlay-only, absolute memory cap | node1 |
-| `app_host` | nginx + SQLite for applications, overlay-only, behind the edge | node3 |
-| `backup` | nightly encrypted logical backups on a systemd timer, restore-verified | node1 |
-| `fail2ban` | sshd jail, bans via ufw, LAN and overlays exempt | all 3 ThinkCentres |
+## Playbooks, in `site.yml` order
 
-Playbooks, in dependency order: `base.yml`, `overlay.yml`, `security.yml`,
-`fail2ban.yml`, `data-primary.yml`, `data-replica.yml`, `sentinels.yml`, `edge.yml`,
-`sftp-mirror.yml`, `app-host.yml`, `rabbitmq.yml`, `backup.yml`, `gitea.yml`.
+| Playbook | Hosts | Roles | Notes |
+|---|---|---|---|
+| `base.yml` | node2; node1–3 | `docker`; `base_packages`, `host_hardening` | Docker was preinstalled on node1 and node3 |
+| `overlay.yml` | node1–3 | `wireguard` | One play, so every peer's key is known before templating |
+| `security.yml` | node1–3 | `firewall`, `ssh_hardening` | Asserts the overlay guard and `sshd -T` |
+| `fail2ban.yml` | node1–4 | `fail2ban` | Includes the laptop: its SSH is forwarded from the Internet |
+| `data-primary.yml` | node2 | `redis_topology`, `postgres_primary` | Finds the live Redis master first |
+| `data-replica.yml` | node3 | `redis_topology`, `postgres_replica` | Same; bootstraps the standby with `pg_basebackup` |
+| `sentinels.yml` | node1–3 | `redis_topology`, `redis_sentinel` | One Sentinel at a time, then a quorum check |
+| `edge.yml` | node1 | `edge` | Restarts Caddy when the Caddyfile changes |
+| `app-host.yml` | node3 | `app_host` | |
+| `rabbitmq.yml` | node1 | `rabbitmq` | |
+| `gitea.yml` | node3 | `gitea` | Registers the runner and waits until it is declared |
+| `sftp-mirror.yml` | node3; node1 | `node_exports`; `sftp_mirror` | Sync account and exports first, then the mirror (needs `edge.yml`) |
+| `backup.yml` | node1 | `backup` | Runs last: it snapshots what the others created |
 
-`backup.yml` must run after `app-host.yml` and `rabbitmq.yml`, since it snapshots
-what they create.
-Run from `ansible/` with the venv's `ansible-playbook`; real inventory lives in the
-git-ignored `inventory/hosts.yml`, secrets in the git-ignored ansible-vault files
-under `inventory/group_vars/`.
+On a machine built from scratch, this order matters. node3's exports snapshot Gitea and
+the app host's SQLite, and the backup pulls those exports.
 
-### Operational notes
+## Roles
 
-- **`sftp-mirror.yml` must run after `edge.yml`.** The mirror watches the host-side bind
-  mount that the edge role gives the sftp container; it generates a dedicated ed25519
-  key on node1 and authorizes it on node3 restricted to node1's overlay IP.
-- **The mirror does not preserve ownership** (rsync runs unprivileged on the target).
-  Promoting the mirror to primary needs `chown -R 1001:1001` on the target directory.
-- **`lsyncd` deletes with `delete = "running"`** — deletions are propagated while it
-  watches, but it never bulk-deletes at startup, so an empty source cannot wipe the mirror.
-- **Back up `/etc/wireguard/` off-box.** Private keys live only on the nodes otherwise;
-  they must never be committed to this public repo.
-- **`sshd -t` is not a verification.** It checks syntax and cannot detect a directive
-  overridden by an earlier drop-in — which is exactly how password authentication
-  stayed enabled on two nodes. `ssh_hardening` now asserts against `sshd -T`.
-- **lsyncd runs as root** and the ssh options it passes to rsync do not reliably carry
-  `StrictHostKeyChecking`. Without a pre-seeded `/root/.ssh/known_hosts` every sync
-  fails with `Host key verification failed` while the playbook still reports success —
-  check `/var/log/lsyncd/lsyncd.log`, not just the play recap.
-- **Run ansible from this `ansible/` directory.** `ansible.cfg` points at
-  `../inventory/hosts.yml`; from anywhere else no inventory is found.
-- **A Caddyfile edit alone does nothing.** `admin off` disables the admin API so
-  `caddy reload` cannot work, and `docker compose up -d` will not recreate a
-  container when only a bind-mounted file changed. The `edge` role restarts Caddy
-  from a handler; anything else editing that file must do the same.
-- **Never let an application publish on `0.0.0.0`.** Docker's port rules are
-  evaluated before ufw's INPUT chain, so ufw will not save you — the bind address in
-  the compose file is the control. The `app_host` and `rabbitmq` roles assert this.
-- **Fail2Ban's `ignoreip` is load-bearing.** It must always include the LAN and both
-  overlays, or a ban can cut off the Ansible controller or a peer node.
+| Role | What it does |
+|---|---|
+| `base_packages` | WireGuard, ufw, rsync, lsyncd, chrony; IPv4 forwarding |
+| `host_hardening` | See [`host_hardening`](#host_hardening) below |
+| `docker` | Docker Engine + Compose from Docker's apt repository |
+| `wireguard` | The `wg1` full mesh. Keys are generated on each node and never leave it |
+| `firewall` | See [`firewall`](#firewall) below |
+| `ssh_hardening` | Key-only SSH and no forwarding. The drop-in is named `00-` so cloud-init cannot override it. Asserts `sshd -T` |
+| `fail2ban` | sshd jail via ufw; the port is read from `sshd -T`; only loopback, the overlay and the controller are exempt |
+| `redis_topology` | Asks every Sentinel who the master is, and fails unless they agree |
+| `postgres_primary` | PostgreSQL 16 primary (tuned for HDD, slot capped) plus this node's Redis. Its `tasks/redis.yml` is shared with the replica |
+| `postgres_replica` | PostgreSQL standby (`pg_basebackup`, slot `node3_slot`, its own `pg_hba`) plus Redis |
+| `redis_sentinel` | Sentinel at quorum 2. Config seeded once; tunables set through `SENTINEL SET` |
+| `edge` | Caddy (the only public listener), Vault (loopback until initialised), SFTP |
+| `sftp_mirror` | lsyncd to the rrsync-confined `homelab-sync` account on node3, verified with a canary file |
+| `node_exports` | On node3: the sync account, plus SQLite and Gitea snapshots published for the backup |
+| `app_host` | nginx + SQLite for applications, on the overlay only |
+| `rabbitmq` | RabbitMQ 3.13 + management UI, on the overlay only, with an absolute memory cap |
+| `gitea` | Gitea + act_runner. Jobs run without the Docker socket and with CPU/RAM/PID caps |
+| `backup` | See [`backup`](#backup) below |
 
-## Realistic-architecture decisions (hardware-constrained)
+### `host_hardening`
 
-The original full-stack plan was trimmed to fit the **actual** hardware (3 nodes with
-2-core CPUs / 3.7 GB RAM / spinning HDDs, plus the controller laptop with an SSD):
+- smartd;
+- a hardware watchdog (iTCO, falling back to softdog), fed by systemd;
+- sysctls that panic on a lockup;
+- Docker daemon settings: log rotation and `live-restore`;
+- Docker starts after `wg1`.
 
-- **Databases = PostgreSQL + Redis only.** MongoDB cut (RAM-hungry WiredTiger + v4.4 EOL);
-  SQL Server cut. Each keeps a primary + async streaming replica on separate physical nodes.
-- **CI = Gitea Actions, not Jenkins** (Jenkins JVM ~1 GB+ did not fit alongside the DBs).
-- **Mixed OS kept** (node1/node3 on 22.04, node2 on 24.04) — no reinstalls; roles are
-  written to work on both.
-- **All DB ports bind only to the WireGuard overlay IP** (10.44.0.x), never 0.0.0.0 —
-  nothing is reachable from the LAN or the internet. Only the edge node exposes 80/443.
-- **Honest performance ceiling:** spinning HDDs limit DB random I/O; the single
-  highest-ROI upgrade would be one SATA SSD in the Postgres-primary node.
+### `firewall`
 
-Node→role map: node1 = edge (Caddy + WireGuard hub + Vault + SFTP-primary + Redis Sentinel),
-node2 = Postgres/Redis primary, node3 = all replicas + SFTP mirror, node4/laptop =
-Gitea + Gitea Actions (on its SSD) + Ansible controller.
+- ufw default deny;
+- SSH allowed only from the LAN and `wg1`;
+- the **overlay guard**: a `raw`-table drop of overlay traffic that did not arrive on
+  `wg1`, plus an `unreachable` route for the address range that collides with the ISP.
+
+### `backup`
+
+- runs nightly and writes an encrypted archive that it verifies itself;
+- discovers the PostgreSQL primary and Redis master at run time;
+- copies the archive to node3.
+
+## Conventions
+
+- **Never `0.0.0.0`.** Services bind the overlay address, and roles that publish ports
+  assert it.
+- **Mount directories, not single files,** for anything that a service or `template`
+  rewrites. A rename onto a single-file mount fails, or lands on an inode the container
+  never sees.
+- **Seed once, then let the service own the config** (Redis, Sentinel). Change tunables
+  through the service's API.
+- **Restart from a handler when a bind-mounted config changes.** `docker compose up -d`
+  does not recreate the container for that.
+- **Discover, don't assume.** The PostgreSQL primary and the Redis master are queried at
+  run time.
+- **Debugging traps:** [`docs/PROJECT-CONTEXT.md` §7](../docs/PROJECT-CONTEXT.md#7-traps-discovered-the-hard-way)
+  lists the ones that cost real time.

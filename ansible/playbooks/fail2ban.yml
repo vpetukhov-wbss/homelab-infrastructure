@@ -3,7 +3,7 @@
 - name: Intrusion mitigation
   # Includes the laptop: it is the ONLY machine with an Internet-facing SSH port
   # (2345, forwarded by the router), so it is the one that most needs this.
-  hosts: edge:data_primary:data_replica:control_ci
+  hosts: edge:data_primary:data_replica:controller
   gather_facts: true
   roles:
     - fail2ban
