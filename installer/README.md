@@ -24,9 +24,10 @@ purpose (see `docs/PROJECT-CONTEXT.md` §2).
   with `--ssh-port N`, sshd listens on N instead of 22 (plain `ssh.service`, socket
   activation off) — node4 uses 2345 so the router's forward, the owner's remote path,
   keeps working after the reinstall
-- Wired NIC on DHCP (`en*`, optional). With `--wifi-*`: Wi-Fi on DHCP for the installed
-  system, joined on its first boot. Without a cable the install itself runs offline
-  from the stick
+- Wired NIC on DHCP (`en*`, optional). With `--wifi-*`: Wi-Fi for the installed system,
+  joined on its first boot, on DHCP or on the static address given with
+  `--wifi-address`/`--wifi-gateway`/`--wifi-dns`. Without a cable the install itself
+  runs offline from the stick
 - Security updates applied during install; UTC; no crash-kernel reservation
 - Suspend/hibernate masked and lid switch ignored, so laptop hardware stays reachable
   until Ansible takes over
@@ -59,6 +60,16 @@ already in the image) instead of `iw`.
 `wpasupplicant` is not in the Ubuntu Server image; the build adds it to `packages`
 (installed offline from the ISO's pool), otherwise the installed system could not join
 Wi-Fi at first boot. Only WPA2-PSK; a WPA3-only (SAE) network needs the passphrase.
+
+**Keep the address the machine had.** The laptop's address was static, set in
+NetworkManager rather than reserved on the router, and the router's 2345 forward points
+at it. A DHCP install would most likely come up on another address: the install
+succeeds and the owner's only remote path is gone. So node4's stick pins the same
+address, gateway and DNS servers. Read them on the running machine before a rebuild:
+
+~~~bash
+nmcli -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns connection show "<SSID>"
+~~~
 
 ## Recovery bundle → "install and everything is there"
 
@@ -123,6 +134,7 @@ scripts/build-installer-iso.py \
   --ssh-key ~/.ssh/homelab-controller.pub --ssh-key ~/.ssh/<admin-pc>.pub \
   --ssh-port 2345 \
   --wifi-ssid "<SSID>" --wifi-psk-hex-file psk.hex \
+  --wifi-address <LAN-IP>/24 --wifi-gateway <router-IP> --wifi-dns <dns>[,<dns>] \
   --recovery-bundle ~/homelab-recovery/homelab-recovery-YYYYMMDD-HHMM.tar.gpg
 ```
 
@@ -168,8 +180,9 @@ fail2ban playbooks (`docs/PROJECT-CONTEXT.md` §10).
 
 1. `sudo homelab-restore`, then `cd ~/Projects/homelab-infrastructure/ansible &&
    ~/homelab/.venv/bin/ansible homelab -m ping`.
-2. Update `controller_lan_ip` in the inventory if the Wi-Fi lease changed; reserve the
-   Wi-Fi MAC on the router.
+2. `ip -4 -br addr show wlp5s0` must show the pinned address: the inventory's
+   `controller_lan_ip` and the target of the router's 2345 forward. Reserve it for the
+   Wi-Fi MAC on the router as well, so DHCP never hands it to another device.
 3. Add node4 to the overlay plays (`wg_overlay_ip: 10.44.0.4`), then run `overlay.yml`,
    `security.yml`, `fail2ban.yml` and `base.yml` (roadmap M3). Do not talk to
    `10.44.0.x` before `wg1` is up: that range also exists inside the ISP's network.
@@ -187,6 +200,7 @@ fail2ban playbooks (`docs/PROJECT-CONTEXT.md` §10).
 
 ## Limitations
 
-- DHCP only — reserve the NIC's MAC on the router so WireGuard endpoints stay stable.
+- Wired NIC: DHCP only — reserve its MAC on the router so WireGuard endpoints stay
+  stable. Wi-Fi: DHCP, or a static IPv4 address with `--wifi-address`.
 - No disk encryption (a headless server cannot type a passphrase at boot).
 - Identity is typed by hand; a typo in the username breaks Ansible until fixed.

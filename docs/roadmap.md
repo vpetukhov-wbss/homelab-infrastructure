@@ -85,9 +85,14 @@ the password manager never shares a host with CI jobs.
   The old bundle was deleted.
 - [ ] The owner copies the bundle off the laptop, together with `RESTORE.txt`.
 - [x] The installer stick was rebuilt and verified on 2026-11-21. It carries Wi-Fi, SSH
-  on 2345 so the router's forward keeps working, and the bundle. It was written and read
-  back; image sha256 `b91c9c8f…`, built with the three fixes found by the VM test. Its `homelab-restore` also fast-forwards the
-  repository from GitHub, so commits pushed after the stick was made are not lost.
+  on 2345 and the bundle, with the three fixes found by the VM test. Its
+  `homelab-restore` also fast-forwards the repository from GitHub, so commits pushed
+  after the stick was made are not lost.
+- [x] The stick keeps node4's address. The laptop's 192.168.0.35 was static in
+  NetworkManager, not reserved on the router, and the router's 2345 forward points at
+  it, so a DHCP install would have moved it. The Wi-Fi is now pinned to the same address,
+  gateway and DNS servers (`--wifi-address`), checked with `netplan generate`. Written
+  and read back: image sha256 `577920af…`.
 - [x] The stick's exact configuration was tested end to end in a UEFI VM on 2026-11-21.
   The VM had the disk serial set and no network, like the laptop without a cable.
   The test found three bugs before any hardware was wiped:
@@ -201,7 +206,8 @@ password alone.
 - [ ] Remove the Windows installer USB stick from node2.
 - [ ] Find out why every server links at 100 Mb/s (cables or switch).
 - [ ] Set BIOS "power on after AC loss" on every machine; consider a UPS.
-- [ ] Add DHCP reservations for every machine, including node4's Wi-Fi MAC.
+- [ ] Add DHCP reservations for every machine. node4 pins 192.168.0.35 itself; reserve
+  it for node4's Wi-Fi MAC as well, so the router never leases it to another device.
 - [ ] Use a Wi-Fi password longer than 8 characters, then rebuild the stick.
 
 ## Backlog (no milestone)

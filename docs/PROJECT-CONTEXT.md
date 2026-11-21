@@ -355,6 +355,10 @@ it down, run `clear`, and reply with "done" only.
   because Ansible reused an already-verified SSH master; test with `ControlMaster=no`.
 - **netplan/networkd cannot match Wi-Fi by glob** (name the interface), and the Ubuntu
   Server image does not ship `wpasupplicant` (it is in the ISO's offline pool).
+- **The laptop's address was static in NetworkManager, not reserved on the router.**
+  The router's 2345 forward points at it, so a DHCP reinstall would have succeeded and
+  cut the owner's only remote path. Before rebuilding a machine that something points
+  at, read `nmcli -f ipv4.method,ipv4.addresses …`; node4's stick pins the address.
 - **`gitea dump` aborts on an instance with no repositories yet**
   (`open /data/git/repositories`); create the directory first.
 
@@ -450,7 +454,7 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **Laptop reinstall as node4** | Ready since 2026-11-21: homelab password set, bundle rebuilt, stick written and read back (Wi-Fi, SSH kept on 2345 so the router's forward — the owner's only remote path — keeps working, bundle + `homelab-restore`). Waiting on the owner: copy the bundle off the laptop, save personal data, install (username `vpetukhov`, the current sudo password), then `sudo homelab-restore`. |
+| **Laptop reinstall as node4** | Ready since 2026-11-21: homelab password set, bundle rebuilt, stick written and read back (Wi-Fi pinned to the laptop's old static address and SSH kept on 2345, so the router's forward — the owner's only remote path — keeps working; bundle + `homelab-restore`). Waiting on the owner: copy the bundle off the laptop, save personal data, install (username `vpetukhov`, the current sudo password), then `sudo homelab-restore`. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | Planned on node4. |

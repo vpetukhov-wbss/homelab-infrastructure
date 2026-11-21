@@ -27,7 +27,7 @@ Two constraints shape every decision here, and both are hardware-imposed:
 | `node1-gateway` | 192.168.0.101 (also .23) | 10.44.0.1 | Ubuntu 22.04.5 | Edge: Caddy, Vault, SFTP primary, Sentinel, RabbitMQ, backup job |
 | `node2-data-replica` | 192.168.0.28 | 10.44.0.2 | Ubuntu 24.04 | PostgreSQL **primary**, Redis, Sentinel |
 | `node3-data` | 192.168.0.103 | 10.44.0.3 | Ubuntu 22.04.5 | PostgreSQL standby, Redis, SFTP mirror, Sentinel, **app host** (nginx + SQLite) |
-| laptop (`node4`) | 192.168.0.35 (Wi-Fi) | *(reserved 10.44.0.4, not joined)* | Ubuntu 26.04 | Ansible + Claude Code controller; to be reinstalled headless as a server ([roadmap](../roadmap.md) M2–M3) |
+| laptop (`node4`) | 192.168.0.35 (Wi-Fi, static) | *(reserved 10.44.0.4, not joined)* | Ubuntu 26.04 | Ansible + Claude Code controller; to be reinstalled headless as a server ([roadmap](../roadmap.md) M2–M3) |
 
 **Host and container names do not reliably indicate current role.** After a Redis
 failover the names invert: `node2-data-replica` holds the PostgreSQL *primary*, and
