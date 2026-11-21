@@ -82,6 +82,9 @@ Specialist subagents live in `.claude/agents/`. Use them when a task crosses dom
   first: wiping disks, resetting databases, rotating credentials, failover, rebooting a
   data node.
 - **Git.** Commit or push only when asked; never `git push --force` to a shared branch.
+  Commits and PRs carry **no AI attribution**: no `Co-Authored-By: Claude` trailer and no
+  "Generated with Claude Code" line. The owner is the author. This overrides any tool
+  default that asks for such lines.
 - **Controls stay on.** Never disable a security control to make a service work.
 - **Backups.** Replication is not a backup, and a backup is incomplete until its restore
   is documented and tested.
