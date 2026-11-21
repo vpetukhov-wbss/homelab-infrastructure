@@ -1,6 +1,6 @@
 # HomeLab Pulse Agent
 
-A Linux agent that measures host telemetry and sends it to the private HomeLab Pulse ingest API. This first slice targets Python 3.10+ with the standard library. It reads CPU, memory, swap, load and uptime from Linux, filesystem capacity from `statvfs`, and optional network and temperature counters from `sysfs`.
+A Linux agent that measures host telemetry and sends it to the private HomeLab Pulse ingest API. This first slice targets Python 3.10+ with the standard library. It reads CPU, memory, swap, load and uptime from Linux, filesystem capacity from `statvfs`, and optional network, temperature and fan speed readings from `sysfs`.
 
 ## Run on a Linux development machine
 
@@ -11,7 +11,9 @@ PYTHONPATH=src python3 -m pulse_agent inventory
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-The `sample` command prints one private payload to stdout without requiring a token or making a network request. Filesystem, network and temperature results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
+The `sample` command prints one private payload to stdout without requiring a token or making a network request. Filesystem, network, temperature and fan results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
+
+Enable fan monitoring with the optional `[fans]` section. Map each approved alias to an absolute Linux hwmon `fanN_input` path readable by the agent. The normal host cycle reports `fanSpeedsRpm` in RPM, including readings of zero. Failed or invalid readings are omitted for that cycle, and the agent logs only the alias. With no configured fans, the field is omitted.
 
 The `inventory` command prints a [hardware profile](../contracts/hardware-profile.v1.schema.json) for review before adding it to the dashboard catalog. It reads available machine and CPU models, architecture, logical CPUs, reported physical cores and OS-visible RAM. The profile excludes serial numbers, system UUIDs, asset tags and hostnames. Values from DMI and CPU topology may be absent on virtual machines.
 
@@ -49,7 +51,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 
 - `pulse_agent_ingest_url` points at the private HTTP or HTTPS endpoint reachable through WireGuard.
 - `vault_pulse_agent_ingest_token` is unique for each host and comes from private encrypted inventory.
-- `pulse_agent_filesystems`, `pulse_agent_interfaces` and `pulse_agent_temperatures` map approved aliases to host resources.
+- `pulse_agent_filesystems`, `pulse_agent_interfaces`, `pulse_agent_temperatures` and `pulse_agent_fans` map approved aliases to host resources.
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.

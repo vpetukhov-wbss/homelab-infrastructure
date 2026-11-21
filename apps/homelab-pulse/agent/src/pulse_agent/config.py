@@ -18,6 +18,7 @@ class Config:
     network: dict[str, str]
     temperatures: dict[str, str]
     disks: dict[str, str] = field(default_factory=dict)
+    fans: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -43,10 +44,12 @@ class Config:
 
         filesystems = _aliases(parser, "filesystems")
         temperatures = _aliases(parser, "temperatures")
+        fans = _aliases(parser, "fans")
         network = _aliases(parser, "network")
         disks = _aliases(parser, "disks")
-        if not all(Path(value).is_absolute() for value in (*filesystems.values(), *temperatures.values())):
-            raise ValueError("Filesystem and temperature paths must be absolute")
+        local_paths = (*filesystems.values(), *temperatures.values(), *fans.values())
+        if not all(Path(value).is_absolute() for value in local_paths):
+            raise ValueError("Filesystem and sensor paths must be absolute")
         if not all(re.fullmatch(r"[A-Za-z0-9_-]{1,15}", name) for name in network.values()):
             raise ValueError("Invalid interface name")
         if not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name) for name in disks.values()):
@@ -54,7 +57,7 @@ class Config:
 
         return cls(
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
-            timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks,
+            timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
         )
 
 

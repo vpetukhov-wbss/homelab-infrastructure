@@ -39,7 +39,7 @@ def collect(
     loads = (proc / "loadavg").read_text(encoding="utf-8").split()[:3]
     if len(loads) != 3:
         raise ValueError("Missing Linux load averages")
-    return {
+    values: dict[str, object] = {
         "bootId": (proc / "sys/kernel/random/boot_id").read_text(encoding="utf-8").strip(),
         "cpuTimesSeconds": cpu_times,
         "memory": memory,
@@ -49,6 +49,9 @@ def collect(
         "network": _network(config.network, network_root),
         "temperaturesCelsius": _temperatures(config.temperatures),
     }
+    if config.fans:
+        values["fanSpeedsRpm"] = _fan_speeds(config.fans)
+    return values
 
 
 def _filesystems(paths: dict[str, str]) -> dict[str, dict[str, int]]:
@@ -87,4 +90,17 @@ def _temperatures(paths: dict[str, str]) -> dict[str, float]:
             values[alias] = int(Path(path).read_text(encoding="utf-8")) / 1000
         except (OSError, ValueError):
             LOG.warning("Temperature sample unavailable for %s", alias)
+    return values
+
+
+def _fan_speeds(paths: dict[str, str]) -> dict[str, int]:
+    values = {}
+    for alias, path in paths.items():
+        try:
+            rpm = int(Path(path).read_text(encoding="utf-8"))
+            if rpm < 0:
+                raise ValueError("Negative fan speed")
+            values[alias] = rpm
+        except (OSError, ValueError):
+            LOG.warning("Fan speed sample unavailable for %s", alias)
     return values

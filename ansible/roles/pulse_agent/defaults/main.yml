@@ -5,4 +5,5 @@ pulse_agent_filesystems:
   root: /
 pulse_agent_interfaces: {}
 pulse_agent_temperatures: {}
+pulse_agent_fans: {}
 pulse_agent_disks: {}

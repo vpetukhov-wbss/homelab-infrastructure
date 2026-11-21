@@ -58,6 +58,11 @@
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/alias" },
           "additionalProperties": { "type": "number" }
+        },
+        "fanSpeedsRpm": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": { "type": "integer", "minimum": 0 }
         }
       }
     }

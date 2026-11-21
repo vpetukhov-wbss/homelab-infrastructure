@@ -21,6 +21,11 @@ send_limit = 4
 {{ alias }} = {{ path }}
 {% endfor %}
 
+[fans]
+{% for alias, path in pulse_agent_fans | dictsort %}
+{{ alias }} = {{ path }}
+{% endfor %}
+
 [disks]
 {% for alias, device in pulse_agent_disks | dictsort %}
 {{ alias }} = {{ device }}

@@ -6,6 +6,7 @@ import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
+from dataclasses import replace
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -175,10 +176,38 @@ class AgentTests(unittest.TestCase):
             with self.assertLogs("pulse_agent.collectors.host", logging.WARNING):
                 values = host.collect(config, proc=proc)
 
+            fan_inputs = {}
+            readings = {"cpu": "1380\n", "chassis": "0\n", "fault": "-1\n", "invalid": "n/a\n"}
+            for alias, reading in readings.items():
+                fan_path = path / ("synthetic-" + alias)
+                fan_path.write_text(reading)
+                fan_inputs[alias] = str(fan_path)
+            fan_inputs["absent"] = str(path / "synthetic-missing")
+            fan_config = replace(config, fans=fan_inputs)
+            with self.assertLogs("pulse_agent.collectors.host", logging.WARNING) as logs:
+                sample = Sample.host(host.collect(fan_config, proc=proc)).encode()
+
         self.assertAlmostEqual(values["cpuTimesSeconds"]["user"], 100 / os.sysconf("SC_CLK_TCK"))
         self.assertEqual(values["memory"]["availableBytes"], 4096 * 1024)
         self.assertEqual(values["temperaturesCelsius"], {"cpu": 62.3})
         self.assertIn("root", values["filesystems"])
+        self.assertNotIn("fanSpeedsRpm", values)
+        self.assertEqual(json.loads(sample)["values"]["fanSpeedsRpm"], {"cpu": 1380, "chassis": 0})
+        warnings = "\n".join(logs.output)
+        for alias in ("fault", "invalid", "absent"):
+            self.assertIn(f"Fan speed sample unavailable for {alias}", warnings)
+        self.assertNotIn("synthetic-", warnings)
+        self.assertNotIn(b"synthetic-", sample)
+
+    def test_config_rejects_relative_fan_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "agent.ini"
+            config.write_text(
+                "[agent]\ningest_url = http://localhost/internal/v1/telemetry\n"
+                "[fans]\ncpu = fan1_input\n"
+            )
+            with self.assertRaisesRegex(ValueError, "sensor paths must be absolute"):
+                Config.load(config)
 
     def test_delivery_replays_same_sample_id_after_failure(self):
         statuses = [503, 204, 204]
