@@ -7,10 +7,13 @@ A Linux agent that measures host telemetry and sends it to the private HomeLab P
 ```bash
 cd apps/homelab-pulse/agent
 PYTHONPATH=src python3 -m pulse_agent --config config.example.ini sample
+PYTHONPATH=src python3 -m pulse_agent inventory
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
 The `sample` command prints one private payload to stdout without requiring a token or making a network request. Filesystem, network and temperature results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
+
+The `inventory` command prints a hardware profile for review before adding it to the dashboard catalog. It reads available machine and CPU models, architecture, logical CPUs, reported physical cores and OS-visible RAM. The profile excludes serial numbers, system UUIDs, asset tags and hostnames. Values from DMI and CPU topology may be absent on virtual machines. Installed memory modules, RAM speed and physical drive inventory require separate hardware data.
 
 ## Delivery
 

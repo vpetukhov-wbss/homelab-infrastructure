@@ -10,7 +10,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from pulse_agent.collect import tick
-from pulse_agent.collectors import host
+from pulse_agent.collectors import host, inventory
 from pulse_agent.config import Config, read_token
 from pulse_agent.models import Sample
 from pulse_agent.outbox import Outbox
@@ -20,6 +20,42 @@ OFFLINE_TOKEN = str(uuid4())
 
 
 class AgentTests(unittest.TestCase):
+    def test_hardware_inventory_exports_only_reviewable_fields(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            (path / "cpuinfo").write_text(
+                "processor: 0\nmodel name: Fixture CPU\nphysical id: 0\ncore id: 0\n\n"
+                "processor: 1\nphysical id: 0\ncore id: 0\n\n"
+                "processor: 2\nphysical id: 1\ncore id: 0\n\n"
+                "processor: 3\nphysical id: 1\ncore id: 0\n"
+            )
+            (path / "meminfo").write_text("MemTotal: 8192 kB\n")
+            (path / "sys_vendor").write_text("Fixture Vendor\n")
+            (path / "product_name").write_text("Fixture Desktop\n")
+            (path / "product_serial").write_text("synthetic-serial\n")
+
+            with patch("pulse_agent.collectors.inventory.platform.machine", return_value="x86_64"):
+                profile = inventory.collect(proc=path, dmi=path)
+
+        self.assertEqual(profile, {
+            "machine": {"manufacturer": "Fixture Vendor", "model": "Fixture Desktop"},
+            "cpu": {"architecture": "x86_64", "model": "Fixture CPU", "logicalCpuCount": 4,
+                    "physicalCoreCount": 2},
+            "memory": {"osVisibleBytes": 8 * 1024 * 1024},
+        })
+
+    def test_hardware_inventory_omits_unavailable_vm_details(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            (path / "cpuinfo").write_text("processor: 0\n\nprocessor: 1\n")
+            (path / "meminfo").write_text("MemTotal: 8192 kB\n")
+            profile = inventory.collect(proc=path, dmi=path / "missing")
+
+        self.assertEqual(profile["machine"], {})
+        self.assertEqual(profile["cpu"]["logicalCpuCount"], 2)
+        self.assertNotIn("physicalCoreCount", profile["cpu"])
+        self.assertNotIn("model", profile["cpu"])
+
     def test_host_sample_uses_explicit_aliases_and_units(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)

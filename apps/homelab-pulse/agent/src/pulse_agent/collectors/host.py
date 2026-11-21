@@ -14,6 +14,15 @@ MEMORY_NAMES = {
 }
 
 
+def read_memory(proc: Path) -> dict[str, int]:
+    memory = {}
+    for row in (proc / "meminfo").read_text(encoding="utf-8").splitlines():
+        key, _, value = row.partition(":")
+        if key in MEMORY_NAMES:
+            memory[MEMORY_NAMES[key]] = int(value.split()[0]) * 1024
+    return memory
+
+
 def collect(
     config: Config, proc: Path = Path("/proc"), network_root: Path = Path("/sys/class/net"),
 ) -> dict[str, object]:
@@ -23,11 +32,7 @@ def collect(
     ticks = os.sysconf("SC_CLK_TCK")
     cpu_times = {name: int(value) / ticks for name, value in zip(CPU_NAMES, cpu[1:])}
 
-    memory = {}
-    for row in (proc / "meminfo").read_text(encoding="utf-8").splitlines():
-        key, _, value = row.partition(":")
-        if key in MEMORY_NAMES:
-            memory[MEMORY_NAMES[key]] = int(value.split()[0]) * 1024
+    memory = read_memory(proc)
     if len(memory) != len(MEMORY_NAMES):
         raise ValueError("Missing Linux memory counters")
 
