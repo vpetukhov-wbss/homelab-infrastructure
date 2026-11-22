@@ -7,6 +7,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20primary%20%2B%20standby-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.4%20%2B%20Sentinel-DC382D?logo=redis&logoColor=white)
 ![Gitea](https://img.shields.io/badge/Git%20%2B%20CI-Gitea%20Actions-609926?logo=gitea&logoColor=white)
+[![HomeLab Pulse](https://img.shields.io/badge/Monitoring-HomeLab%20Pulse%20%28in%20development%29-3776AB?logo=python&logoColor=white)](apps/homelab-pulse/README.md)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 [![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-D97757?logo=claude&logoColor=white)](docs/claude-code.md)
 
@@ -22,6 +23,8 @@ One owner, four machines, and:
   SQLite and SFTP today; **MongoDB** and an AWS emulator (**LocalStack**) next;
 - **self-hosted Git with CI**, application hosting behind a single edge, and a password
   manager of my own (**Vaultwarden**);
+- **my own monitoring**, [HomeLab Pulse](apps/homelab-pulse/README.md): an agent on
+  every machine that feeds a live dashboard (in development);
 - **reachable from anywhere by me, over WireGuard**, and by nobody else;
 - **encrypted backups with a tested restore**;
 - **every machine rebuildable** from a USB stick and one password, including the
@@ -38,41 +41,188 @@ One owner, four machines, and:
 | Network | wired | wired | wired | Wi-Fi |
 | Runs | **Edge**: Caddy, Vault, SFTP, RabbitMQ, Sentinel, backups | PostgreSQL **primary**, Redis, Sentinel | PostgreSQL standby, Redis, Sentinel, app host, Gitea + CI runner, SFTP mirror, backup copy | **Controller** (Ansible, Claude Code). Being reinstalled as a server for MongoDB, Vaultwarden, LocalStack and monitoring |
 
-The CPUs have two cores, each server has about 3 GB of usable RAM, and the disks spin.
-**Disk I/O is the ceiling**, and containers do not change that. Why each service sits
-where it does:
+The CPUs have two cores and the disks spin. **Disk I/O is the ceiling**, and containers
+do not change that. Memory is not the limit yet. Measured on the live machines on
+2026-11-22 (grey: installed, blue: in use):
+
+~~~mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#c9d1d9, #1f6feb"
+---
+xychart-beta
+    title "Memory in use vs installed (GiB)"
+    x-axis ["node1", "node2", "node3", "node4 (still a desktop)"]
+    y-axis "GiB" 0 --> 8
+    bar [3.65, 3.66, 3.68, 7.13]
+    bar [0.74, 0.69, 0.78, 4.99]
+~~~
+
+~~~mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#c9d1d9, #1f6feb"
+---
+xychart-beta
+    title "Root filesystem used vs size (GB)"
+    x-axis ["node1", "node2", "node3", "node4 (still a desktop)"]
+    y-axis "GB" 0 --> 500
+    bar [243, 243, 490, 250]
+    bar [16, 9, 17, 84]
+~~~
+
+node4 is still the old laptop desktop, with a browser and an IDE open; it becomes a
+headless server at its reinstall. Why each service sits where it does:
 [docs/PROJECT-CONTEXT.md §3](docs/PROJECT-CONTEXT.md#3-role-assignment-and-why-each-one-landed-where-it-did).
 
 ## How it fits together
 
 ~~~mermaid
-flowchart LR
-    owner([Owner, anywhere]) -. "WireGuard (planned)" .-> n1
-    lan[(LAN, treated as hostile)] -->|80 / 443| n1
-    subgraph wg1 ["WireGuard overlay wg1 · 10.44.0.0/24 · full mesh"]
-      n1["node1 · edge<br/>Caddy · Vault · SFTP · RabbitMQ · Sentinel · backups"]
-      n2["node2<br/>PostgreSQL primary · Redis · Sentinel"]
-      n3["node3<br/>PostgreSQL standby · Redis · Sentinel<br/>apps · Gitea + runner · SFTP mirror"]
+flowchart TB
+    subgraph mesh ["wg1 · WireGuard full mesh · 10.44.0.0/24"]
+        direction LR
+        n1["node1 · edge · 10.44.0.1<br/>Caddy · Vault · SFTP · RabbitMQ<br/>Sentinel · nightly backup job"]
+        n2["node2 · data · 10.44.0.2<br/>PostgreSQL primary<br/>Redis · Sentinel"]
+        n3["node3 · data + apps · 10.44.0.3<br/>PostgreSQL standby · Redis · Sentinel<br/>nginx + SQLite apps · Gitea + runner<br/>SFTP mirror · backup copy"]
+        n1 <--> n2
+        n2 <--> n3
+        n3 <--> n1
     end
-    n4["node4 · controller<br/>Ansible · Claude Code"] -->|SSH| n1 & n2 & n3
-    n2 -->|streaming replication| n3
-    n1 -->|reverse proxy| n3
-    n1 -->|mirror · nightly backup copy| n3
+    n4["node4 · controller · laptop on Wi-Fi<br/>Ansible · Claude Code<br/>joins wg1 as 10.44.0.4 after its reinstall"]
+    n4 -- "SSH over the LAN, pinned host keys" --> mesh
 ~~~
 
-- **Only node1 listens publicly.** Caddy serves :80 and :443; there is no router
-  forward to it yet. Every database, broker, Vault and application port binds to the
-  overlay. On top of that, a `raw`-table guard drops overlay traffic that did not arrive
-  on `wg1`, because Docker's port publishing bypasses ufw.
-- **PostgreSQL failover is manual and Redis failover is automatic** (three Sentinels,
-  quorum 2). A real 28-hour outage exercised both.
-- **Backups** run nightly, are AES-256 encrypted and verify themselves. They are stored
-  on node1 and copied to node3.
+- **The mesh has no hub.** Every server peers directly with the other two, so any one
+  of them can fail without cutting the other two apart.
+- **Every database, broker, Vault and application port binds to the overlay.** The LAN
+  sees only SSH and Caddy.
+- **Roles move.** Redis Sentinel moves the master and a promotion moves the PostgreSQL
+  primary, so scripts discover them at run time instead of trusting host names.
 
 Full topology and service catalog:
 [docs/architecture/overview.md](docs/architecture/overview.md).
 
-## Status on 2026-11-21
+## Who can reach what
+
+~~~mermaid
+flowchart LR
+    internet(["Internet"])
+    lanhost(["any device on the LAN"])
+    peer(["a wg1 peer"])
+
+    internet -- "TCP 2345<br/>the only router forward today" --> laptop["laptop SSH :2345<br/>keys only · Fail2Ban"]
+    internet -. "planned: one UDP port for WireGuard<br/>then 2345 is closed" .-> peer
+
+    lanhost -- "SSH, LAN subnet only" --> nodessh["node1 :2222<br/>node2 :22 · node3 :22<br/>keys only · Fail2Ban"]
+    lanhost -- "HTTP / HTTPS" --> caddy["node1 Caddy<br/>:80 / :443<br/>no router forward yet"]
+    lanhost -- "adds a route<br/>to 10.44.0.x" --x guard{{"overlay guard<br/>raw table: drops overlay<br/>traffic not from wg1"}}
+    peer --> guard
+    caddy -- "reverse proxy" --> guard
+    guard --> svc["overlay-only services<br/>PostgreSQL · Redis<br/>Sentinel · RabbitMQ<br/>Vault · SFTP<br/>Gitea · app host"]
+~~~
+
+Docker's port publishing bypasses ufw, so the bind address alone did not keep overlay
+services off the LAN: on 2026-11-21 a LAN machine with one extra route reached **14 of
+14** of them. The overlay guard drops that traffic before Docker's NAT sees it. The same
+test afterwards: **14 of 14 blocked**. Details and the remaining gaps:
+[docs/security/posture.md](docs/security/posture.md).
+
+## How data is protected
+
+~~~mermaid
+flowchart TB
+    subgraph live ["Live copies: they survive a dead disk, not a mistake"]
+        direction LR
+        pgp[("PostgreSQL primary<br/>node2")] -- "async streaming<br/>replication" --> pgs[("PostgreSQL standby<br/>node3")]
+        sen{{"3 Sentinels<br/>quorum 2"}} -. "watch,<br/>promote" .-> rm[("Redis master")]
+        rm -- "replication" --> rr[("Redis replica")]
+        sftp[("SFTP tree<br/>node1")] -- "lsyncd → rrsync<br/>over wg1" --> mirror[("SFTP mirror<br/>node3")]
+    end
+    subgraph nightly ["Nightly archives: the only real backup"]
+        direction LR
+        exp["23:40 · node3<br/>SQLite .backup<br/>gitea dump"] -- "pulled via<br/>rrsync" --> job["00:00–00:15 · node1<br/>backup job finds today's<br/>primary and master first<br/>+ RabbitMQ definitions<br/>+ WireGuard config"]
+        job --> arc[("AES-256 archive<br/>node1 · 21 kept<br/>verified by decrypt")]
+        arc --> copy[("copy on node3<br/>30 days")]
+        copy -.-> off[/"off-site copy:<br/>not yet"/]
+    end
+    live -. "pg_dump + roles from the primary<br/>RDB from the master · SFTP tree" .-> nightly
+~~~
+
+A standby and a mirror copy a `DROP TABLE` within milliseconds, so only the encrypted
+archives count as backups. The original archive format was restore-drilled on
+2026-11-20; the extended format has not been drilled yet, and there is no off-site copy
+(roadmap M8).
+
+## When a machine dies
+
+Redis fails over by itself. This is what happened when node2 was lost for 28 hours on
+2026-11-18:
+
+~~~mermaid
+sequenceDiagram
+    autonumber
+    participant C as Sentinel-aware client
+    participant S as Sentinels on node1, node2, node3
+    participant M as Redis on node2
+    participant R as Redis on node3
+    C->>S: which node is the homelab-redis master?
+    S-->>C: node2
+    C->>M: reads and writes
+    Note over M: node2 is lost
+    S->>S: no answer for 20 s, 2 of 3 Sentinels agree
+    S->>R: promote (REPLICAOF NO ONE)
+    S-->>C: the master is now node3
+    C->>R: reads and writes
+    Note over M: node2 comes back
+    S->>M: demote (REPLICAOF node3)
+    M->>R: resynchronise as a replica
+~~~
+
+PostgreSQL is promoted by hand, on purpose. Promoting while the old primary is merely
+unreachable creates two primaries. In the same outage the standby was left alone and
+resumed streaming by itself when node2 returned. Runbooks:
+[Redis failover](docs/runbooks/redis-failover-and-reboots.md),
+[PostgreSQL promotion](docs/runbooks/postgres-promotion.md).
+
+## Rebuilding a machine from nothing
+
+~~~mermaid
+flowchart TB
+    bare(["bare machine"]) --> stick["installer stick built for this machine<br/>disk serial · SSH keys · Wi-Fi<br/>encrypted recovery bundle"]
+    stick --> check{"right disk serial,<br/>and the owner<br/>types yes?"}
+    check -- no --> safe(["stops, nothing written"])
+    check -- yes --> os["unattended Ubuntu Server 26.04<br/>whole-disk LVM · key-only SSH"]
+    os --> restore["controller only: sudo homelab-restore<br/>one password brings back SSH keys,<br/>vault password, repository and inventory,<br/>Claude Code"]
+    restore --> converge["ansible-playbook site.yml<br/>WireGuard · firewall · Docker · services"]
+~~~
+
+The stick for node4 was tested end to end in a UEFI virtual machine on 2026-11-21:
+offline install, restore, and Ansible reaching node1–3. The test found three bugs before
+any hardware was wiped. See [installer/README.md](installer/README.md).
+
+## HomeLab Pulse, my own monitoring
+
+~~~mermaid
+flowchart LR
+    subgraph each ["every machine"]
+        src["/proc · /sys · SMART snapshots<br/>NGINX · SQLite · Redis · PostgreSQL"] --> agent["pulse-agent<br/>every 15 s<br/>unprivileged"]
+        agent --> q[("outbox<br/>on disk")]
+    end
+    q -- "POST over wg1<br/>token per machine" --> api["receiver (.NET)<br/>outside this repository<br/>history · live dashboard"]
+~~~
+
+A small Python agent, standard library only, measures each host and its services. It queues
+samples on disk and delivers them to a private receiver, which keeps the history and
+drives a live dashboard. The agent, its JSON contracts and its Ansible role are here,
+with unit tests. **It is not deployed yet**: machines join once the .NET receiver
+accepts the contract. How it works, with sequence diagrams and flowcharts:
+[apps/homelab-pulse/README.md](apps/homelab-pulse/README.md).
+
+## Status on 2026-11-22
 
 **Running, and checked against the live systems:**
 
@@ -84,6 +234,8 @@ Full topology and service catalog:
 - Gitea with its Actions runner (registered, no pipelines yet);
 - nightly encrypted backups with an off-node copy;
 - key-only SSH, Fail2Ban, SMART monitoring and watchdogs on every server.
+
+**In development:** HomeLab Pulse (see above).
 
 **Next:** reinstall the laptop as node4 (the installer stick is ready). After that come
 WireGuard remote access, and then MongoDB, Vaultwarden, LocalStack and monitoring on
@@ -108,6 +260,7 @@ the controller.
 
 ~~~text
 ansible/      roles and playbooks: all machine and service configuration
+apps/         application code: HomeLab Pulse (monitoring agent and its contracts)
 inventory/    example inventory, secret-variable template, image pins
               (the real inventory and the secrets are git-ignored)
 installer/    unattended Ubuntu installer stick and the controller restore tool
@@ -127,6 +280,7 @@ docs/         handover context, architecture, security, roadmap, runbooks
 | [docs/security/secrets-management.md](docs/security/secrets-management.md) | Where every secret lives and how it comes back |
 | [ansible/README.md](ansible/README.md) | Roles, playbooks, run order |
 | [installer/README.md](installer/README.md) | From bare metal to a reachable host |
+| [apps/homelab-pulse/README.md](apps/homelab-pulse/README.md) | HomeLab Pulse: how the monitoring agent works |
 | [docs/claude-code.md](docs/claude-code.md) | How Claude Code is set up to work on this repository |
 
 ## Not part of this platform
