@@ -55,6 +55,12 @@ The host needs `smartctl` from `smartmontools`, which the host hardening role pr
 
 The normalizer preserves the source observation time and selected health, temperature, NVMe wear and error counters, or recognized ATA sector counters. It omits serial numbers, paths, command lines and raw attributes. Missing, malformed, failed or future-dated snapshots report `unavailable`. Readings older than three minutes retain their observation time with `stale` status and omit the metric values.
 
+## NGINX
+
+Set `nginx_status_url` under `[agent]` or `pulse_agent_nginx_status_url` in private Ansible inventory to an existing private endpoint that serves NGINX `stub_status`. Use an HTTP or HTTPS URL with a loopback, RFC 1918, or IPv6 unique-local address literal. The agent sends a GET without credentials, proxies, or redirects. It does not enable a listener or change the NGINX configuration.
+
+The host cycle records active, reading, writing and waiting connections along with cumulative accepted connections, handled connections and requests. Each reading includes its own UTC observation time. Connection errors, timeouts, unexpected HTTP responses and malformed bodies report `unavailable` while host metrics continue. The socket timeout is one second and the response is limited to 1 KiB. With an empty URL, the agent omits this collector.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -76,9 +82,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_filesystems`, `pulse_agent_interfaces`, `pulse_agent_temperatures` and `pulse_agent_fans` map approved aliases to host resources.
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
+- `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, queue, HTTP transport and deployment templates. Docker, database, broker, web server and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, NGINX status, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, database, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

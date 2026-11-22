@@ -68,6 +68,9 @@
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/alias" },
           "additionalProperties": { "$ref": "#/$defs/diskSmartReading" }
+        },
+        "nginx": {
+          "$ref": "#/$defs/nginxReading"
         }
       }
     }
@@ -76,6 +79,30 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "nginxReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "activeConnections": { "type": "integer", "minimum": 0 },
+        "acceptedConnectionsTotal": { "type": "integer", "minimum": 0 },
+        "handledConnectionsTotal": { "type": "integer", "minimum": 0 },
+        "requestsTotal": { "type": "integer", "minimum": 0 },
+        "readingConnections": { "type": "integer", "minimum": 0 },
+        "writingConnections": { "type": "integer", "minimum": 0 },
+        "waitingConnections": { "type": "integer", "minimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": {
+        "required": [
+          "activeConnections", "acceptedConnectionsTotal", "handledConnectionsTotal", "requestsTotal",
+          "readingConnections", "writingConnections", "waitingConnections"
+        ]
+      },
+      "else": { "maxProperties": 2 }
+    },
     "diskSmartReading": {
       "type": "object",
       "additionalProperties": false,

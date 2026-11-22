@@ -2,8 +2,11 @@ import configparser
 import os
 import re
 from dataclasses import dataclass, field
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from urllib.parse import urlsplit
+
+PRIVATE_MONITORING_NETWORKS = tuple(map(ip_network, ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")))
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,7 @@ class Config:
     disks: dict[str, str] = field(default_factory=dict)
     fans: dict[str, str] = field(default_factory=dict)
     smart_snapshots: dict[str, str] = field(default_factory=dict)
+    nginx_status_url: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -60,7 +64,7 @@ class Config:
         return cls(
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
-            smart_snapshots,
+            smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")),
         )
 
 
@@ -69,6 +73,25 @@ def _aliases(parser: configparser.ConfigParser, section: str) -> dict[str, str]:
     if not all(re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", alias) for alias in values):
         raise ValueError(f"Invalid alias in [{section}]")
     return values
+
+
+def _nginx_status_url(value: str) -> str | None:
+    if not value:
+        return None
+    url = urlsplit(value)
+    if (
+        any(ord(char) <= 32 or ord(char) == 127 for char in value)
+        or url.scheme not in {"http", "https"} or url.username is not None or url.password is not None
+        or not url.path or "?" in value or "#" in value or url.port == 0
+    ):
+        raise ValueError("Invalid NGINX status URL")
+    try:
+        address = ip_address(url.hostname or "")
+    except ValueError:
+        raise ValueError("NGINX status URL requires a private IP literal") from None
+    if not address.is_loopback and not any(address in network for network in PRIVATE_MONITORING_NETWORKS):
+        raise ValueError("NGINX status URL requires a private IP literal")
+    return value
 
 
 def read_token(path: Path | None) -> str:

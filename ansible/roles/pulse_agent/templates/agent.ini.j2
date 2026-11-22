@@ -5,6 +5,9 @@ timeout_seconds = 2
 max_pending = 512
 max_age_seconds = 86400
 send_limit = 4
+{% if pulse_agent_nginx_status_url %}
+nginx_status_url = {{ pulse_agent_nginx_status_url }}
+{% endif %}
 
 [filesystems]
 {% for alias, path in pulse_agent_filesystems | dictsort %}

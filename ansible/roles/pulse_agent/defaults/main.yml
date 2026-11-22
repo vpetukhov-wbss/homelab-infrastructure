@@ -9,3 +9,4 @@ pulse_agent_fans: {}
 pulse_agent_disks: {}
 pulse_agent_smart_snapshots: {}
 pulse_agent_smart_devices: {}
+pulse_agent_nginx_status_url: ""
