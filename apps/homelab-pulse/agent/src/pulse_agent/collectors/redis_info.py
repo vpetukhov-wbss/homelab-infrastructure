@@ -1,15 +1,12 @@
-import json
 import os
 import socket
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic
 from typing import BinaryIO
 
 from ..config import RedisSettings
+from .cached_probe import observe
 
-POLL_SECONDS = 30
 PROBE_SECONDS = 1
 MAX_INFO_BYTES = 64 * 1024
 FIELDS = {
@@ -26,63 +23,15 @@ FIELDS = {
 def collect(settings: RedisSettings, cache_dir: Path | None) -> dict[str, object]:
     cache = cache_dir / "redis-info.json" if cache_dir else None
     scope = [settings.host, settings.port, settings.username, str(settings.password_file)]
-    if cache:
-        reading = _cached_reading(cache, scope)
-        if reading:
-            return reading
-    try:
-        metrics = _metrics(_probe(settings))
-    except (OSError, ValueError):
-        metrics = {}
-    reading = {
-        "status": "available" if metrics else "unavailable",
-        "observedAt": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        **metrics,
+    return observe(cache, scope, lambda: _metrics(_probe(settings)), _cached_metrics)
+
+
+def _cached_metrics(reading: dict) -> dict[str, int]:
+    fields = (*FIELDS.values(), "aofCurrentSizeBytes")
+    metrics = {
+        name: reading[name] for name in fields if type(reading.get(name)) is int and reading[name] >= 0
     }
-    if cache:
-        try:
-            _save(cache, {"scope": scope, "reading": reading})
-        except OSError:
-            pass
-    return reading
-
-
-def _cached_reading(path: Path, scope: list[str | int]) -> dict[str, object] | None:
-    try:
-        with path.open(encoding="utf-8") as stream:
-            data = json.loads(stream.read(4096))
-        if data["scope"] != scope:
-            return None
-        reading = data["reading"]
-        timestamp = reading["observedAt"]
-        if not timestamp.endswith("Z"):
-            return None
-        observed_at = datetime.fromisoformat(timestamp[:-1] + "+00:00")
-        if not 0 <= (datetime.now(timezone.utc) - observed_at).total_seconds() < POLL_SECONDS:
-            return None
-        state = {"observedAt": timestamp, "status": reading["status"]}
-        if state["status"] == "unavailable":
-            return state
-        fields = (*FIELDS.values(), "aofCurrentSizeBytes")
-        metrics = {
-            field: reading[field] for field in fields if type(reading.get(field)) is int and reading[field] >= 0
-        }
-        if state["status"] == "available" and "usedMemoryBytes" in metrics:
-            return {**state, **metrics}
-    except (OSError, AttributeError, KeyError, TypeError, ValueError, RecursionError):
-        pass
-    return None
-
-
-def _save(path: Path, data: dict) -> None:
-    fd, name = tempfile.mkstemp(dir=path.parent, prefix=".redis-")
-    temporary = Path(name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(data, stream)
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    return metrics if "usedMemoryBytes" in metrics else {}
 
 
 def _password(settings: RedisSettings) -> bytes:

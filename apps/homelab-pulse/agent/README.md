@@ -83,6 +83,14 @@ Ansible uses `pulse_agent_redis_host`, `pulse_agent_redis_port` and `pulse_agent
 
 The agent reports used memory, configured memory limit, instantaneous operations per second, connected clients, cache hit and miss totals, evictions and AOF size when AOF is enabled. A zero memory limit indicates Redis reported no configured cap. Compute hit ratio from changes in hit and miss counters within the same server life cycle. Each periodic probe uses a one-second deadline and Redis 7's multi-section `INFO` request. The host cycle reuses a reading for 30 seconds with its original observation time. Failures report `unavailable` while other metrics continue. The CLI `sample` command always takes a fresh reading without writing the cache.
 
+## PostgreSQL
+
+Enable `[postgresql]` for one approved database per agent. Set `host` to a loopback or private IP literal on the trusted WireGuard network. Configure `port`, `database` and a dedicated `username`. Grant the monitoring login CONNECT on the selected database. The standard statistics query requires no privileges on application tables. The client requests read-only transactions and prefers TLS if the server offers it. Use loopback or WireGuard for this probe.
+
+In Ansible, set `pulse_agent_postgres_host`, `pulse_agent_postgres_port`, `pulse_agent_postgres_database` and `pulse_agent_postgres_username`. Store a libpq password-file entry for the exact host, port, database and user in `vault_pulse_agent_postgres_pgpass`. The role installs `postgresql-client` and supplies the file through systemd credentials. For manual Linux testing with `psql` installed, set `pgpass_file` to an absolute path with mode 0600.
+
+The agent reports database size, connected backends, recovery state and cumulative commit, rollback, buffer hit, block read and deadlock counters. The probe itself counts as a connection. The collector includes the statistics reset time when PostgreSQL provides one. Use counter deltas and start a new series after a reset. The host cycle reuses an observation for 30 seconds with its original timestamp. The database statement has a one-second timeout and the client process has a two-second limit. Failed probes report `unavailable` while other metrics continue. A manual `sample` command takes a fresh reading.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -107,9 +115,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
 - `pulse_agent_redis_host` enables Redis monitoring using the dedicated service credential.
+- `pulse_agent_postgres_host` enables PostgreSQL monitoring using the dedicated libpq password file.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, PostgreSQL, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

@@ -18,6 +18,15 @@ class RedisSettings:
 
 
 @dataclass(frozen=True)
+class PostgreSQLSettings:
+    host: str
+    port: int
+    database: str
+    username: str
+    pgpass_file: Path | None
+
+
+@dataclass(frozen=True)
 class Config:
     ingest_url: str
     state_directory: Path
@@ -34,6 +43,7 @@ class Config:
     nginx_status_url: str | None = None
     sqlite_databases: dict[str, str] = field(default_factory=dict)
     redis: RedisSettings | None = None
+    postgresql: PostgreSQLSettings | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -78,7 +88,7 @@ class Config:
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
             smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")), sqlite_databases,
-            _redis_settings(parser),
+            _redis_settings(parser), _postgresql_settings(parser),
         )
 
 
@@ -130,6 +140,30 @@ def _redis_settings(parser: configparser.ConfigParser) -> RedisSettings | None:
     if password_file is not None and not password_file.is_absolute():
         raise ValueError("Redis password_file must be absolute")
     return RedisSettings(host, port, username, password_file)
+
+
+def _postgresql_settings(parser: configparser.ConfigParser) -> PostgreSQLSettings | None:
+    if not parser.has_section("postgresql"):
+        return None
+    section = parser["postgresql"]
+    host = section.get("host", "")
+    if not host:
+        return None
+    if not _private_ip_literal(host):
+        raise ValueError("PostgreSQL requires a private IP literal")
+    port = section.getint("port", fallback=5432)
+    database = section.get("database", "postgres")
+    username = section.get("username", "pulse-monitor")
+    if (
+        not 1 <= port <= 65535 or not re.fullmatch(r"[A-Za-z0-9_.-]{1,63}", database)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,63}", username) or username == "postgres"
+    ):
+        raise ValueError("PostgreSQL requires a valid port, database and dedicated monitor username")
+    path = section.get("pgpass_file")
+    pgpass_file = Path(path) if path else None
+    if pgpass_file is not None and not pgpass_file.is_absolute():
+        raise ValueError("PostgreSQL pgpass_file must be absolute")
+    return PostgreSQLSettings(host, port, database, username, pgpass_file)
 
 
 def read_token(path: Path | None) -> str:

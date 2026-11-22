@@ -13,10 +13,13 @@ LoadCredential=ingest-token:/etc/pulse-agent/ingest-token
 {% if pulse_agent_redis_host %}
 LoadCredential=redis-password:/etc/pulse-agent/redis-password
 {% endif %}
+{% if pulse_agent_postgres_host %}
+LoadCredential=postgres-pgpass:/etc/pulse-agent/postgres-pgpass
+{% endif %}
 StateDirectory=pulse-agent
 StateDirectoryMode=0700
 UMask=0077
-TimeoutStartSec=12s
+TimeoutStartSec={{ '14s' if pulse_agent_postgres_host else '12s' }}
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

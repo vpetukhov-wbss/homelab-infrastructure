@@ -79,6 +79,9 @@
         },
         "redis": {
           "$ref": "#/$defs/redisReading"
+        },
+        "postgresql": {
+          "$ref": "#/$defs/postgresqlReading"
         }
       }
     }
@@ -87,6 +90,32 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "postgresqlReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "statsResetAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "inRecovery": { "type": "boolean" },
+        "databaseBytes": { "$ref": "#/$defs/bytes" },
+        "connectedBackends": { "type": "integer", "minimum": 0 },
+        "commitsTotal": { "type": "integer", "minimum": 0 },
+        "rollbacksTotal": { "type": "integer", "minimum": 0 },
+        "bufferHitsTotal": { "type": "integer", "minimum": 0 },
+        "blocksReadTotal": { "type": "integer", "minimum": 0 },
+        "deadlocksTotal": { "type": "integer", "minimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": {
+        "required": [
+          "inRecovery", "databaseBytes", "connectedBackends", "commitsTotal", "rollbacksTotal",
+          "bufferHitsTotal", "blocksReadTotal", "deadlocksTotal"
+        ]
+      },
+      "else": { "maxProperties": 2 }
+    },
     "redisReading": {
       "type": "object",
       "additionalProperties": false,

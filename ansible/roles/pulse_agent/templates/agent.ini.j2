@@ -55,3 +55,11 @@ host = {{ pulse_agent_redis_host }}
 port = {{ pulse_agent_redis_port }}
 username = {{ pulse_agent_redis_username }}
 {% endif %}
+
+{% if pulse_agent_postgres_host %}
+[postgresql]
+host = {{ pulse_agent_postgres_host }}
+port = {{ pulse_agent_postgres_port }}
+database = {{ pulse_agent_postgres_database }}
+username = {{ pulse_agent_postgres_username }}
+{% endif %}

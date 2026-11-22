@@ -14,3 +14,7 @@ pulse_agent_sqlite_databases: {}
 pulse_agent_redis_host: ""
 pulse_agent_redis_port: 6379
 pulse_agent_redis_username: pulse-monitor
+pulse_agent_postgres_host: ""
+pulse_agent_postgres_port: 5432
+pulse_agent_postgres_database: postgres
+pulse_agent_postgres_username: pulse-monitor
