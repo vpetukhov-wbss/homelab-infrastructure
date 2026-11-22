@@ -1,0 +1,10 @@
+[Unit]
+Description=Summarize Gitea Actions for HomeLab Pulse every minute
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=1min
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,72 @@
+---
+- name: Validate the optional Gitea Actions database path
+  ansible.builtin.assert:
+    that:
+      - pulse_agent_gitea_actions_db is string
+      - pulse_agent_gitea_actions_db == '' or pulse_agent_gitea_actions_db is match('^/[^/]+(?:/[^/]+)*\Z')
+    quiet: true
+  no_log: true
+
+- name: Install local Gitea Actions polling
+  when: pulse_agent_gitea_actions_db | length > 0
+  block:
+    - name: Create the Actions producer account
+      ansible.builtin.user:
+        name: pulse-actions
+        group: pulse-agent
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Write the protected Gitea database path
+      ansible.builtin.copy:
+        content: "{{ pulse_agent_gitea_actions_db | to_json }}\n"
+        dest: /etc/pulse-agent/gitea-actions-db.json
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Install Gitea Actions systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - pulse-actions.service
+        - pulse-actions.timer
+
+    - name: Enable Gitea Actions polling
+      ansible.builtin.systemd_service:
+        name: pulse-actions.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+
+- name: Disable unused Gitea Actions polling
+  when: pulse_agent_gitea_actions_db | length == 0
+  block:
+    - name: Check for the installed Actions timer
+      ansible.builtin.stat:
+        path: /etc/systemd/system/pulse-actions.timer
+      register: pulse_agent_actions_timer
+
+    - name: Stop and disable the installed Actions timer
+      ansible.builtin.systemd_service:
+        name: pulse-actions.timer
+        enabled: false
+        state: stopped
+      when: pulse_agent_actions_timer.stat.exists
+
+    - name: Stop any in-flight Actions measurement
+      ansible.builtin.systemd_service:
+        name: pulse-actions.service
+        state: stopped
+      when: pulse_agent_actions_timer.stat.exists
+
+    - name: Remove the unused Gitea database path
+      ansible.builtin.file:
+        path: /etc/pulse-agent/gitea-actions-db.json
+        state: absent

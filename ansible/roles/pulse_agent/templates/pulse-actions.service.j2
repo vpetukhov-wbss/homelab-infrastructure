@@ -1,0 +1,24 @@
+[Unit]
+Description=Summarize local Gitea Actions for HomeLab Pulse
+
+[Service]
+Type=oneshot
+User=pulse-actions
+Group=pulse-agent
+WorkingDirectory=/opt/pulse-agent
+ExecStart={{ pulse_agent_python_path }} -B -m pulse_agent.gitea_actions_probe %d/database /run/pulse-actions/actions.json
+LoadCredential=database:/etc/pulse-agent/gitea-actions-db.json
+RuntimeDirectory=pulse-actions
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0027
+TimeoutStartSec=5s
+CapabilityBoundingSet=
+NoNewPrivileges=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+InaccessiblePaths=-/run/docker.sock -/etc/pulse-agent -/var/lib/pulse-agent

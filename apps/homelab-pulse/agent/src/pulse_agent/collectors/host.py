@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import docker, gitea, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
+from . import docker, gitea, gitea_actions, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -72,6 +72,8 @@ def collect(
     if config.gitea_health_url:
         cache_dir = config.state_directory if use_cache else None
         values["gitea"] = gitea.collect(config.gitea_health_url, cache_dir)
+    if config.gitea_actions_snapshot:
+        values["giteaActions"] = gitea_actions.collect(config.gitea_actions_snapshot)
     return values
 
 

@@ -66,6 +66,9 @@
 - name: Configure local Docker volume storage measurements
   ansible.builtin.import_tasks: docker_volume.yml
 
+- name: Configure the local Gitea Actions producer
+  ansible.builtin.import_tasks: gitea_actions.yml
+
 - name: Require a dedicated Redis monitoring credential
   ansible.builtin.assert:
     that:

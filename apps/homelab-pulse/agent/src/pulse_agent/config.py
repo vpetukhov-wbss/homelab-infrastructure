@@ -58,6 +58,7 @@ class Config:
     gitea_health_url: str | None = None
     docker_snapshots: dict[str, str] = field(default_factory=dict)
     docker_volume_snapshots: dict[str, str] = field(default_factory=dict)
+    gitea_actions_snapshot: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -89,6 +90,9 @@ class Config:
         smart_snapshots = _aliases(parser, "smart_snapshots")
         docker_snapshots = _aliases(parser, "docker_snapshots")
         docker_volume_snapshots = _aliases(parser, "docker_volume_snapshots")
+        actions_snapshot = agent.get("gitea_actions_snapshot") or None
+        if actions_snapshot and not Path(actions_snapshot).is_absolute():
+            raise ValueError("Gitea Actions snapshot path must be absolute")
         sqlite_databases = _aliases(parser, "sqlite_databases")
         local_paths = (*filesystems.values(), *temperatures.values(), *fans.values(), *smart_snapshots.values())
         if not all(Path(value).is_absolute() for value in local_paths):
@@ -108,7 +112,7 @@ class Config:
             smart_snapshots, _private_probe_url(agent.get("nginx_status_url", ""), "NGINX status"), sqlite_databases,
             _redis_settings(parser), _postgresql_settings(parser), _rabbitmq_settings(parser),
             _private_probe_url(agent.get("gitea_health_url", ""), "Gitea health", suffix="/api/healthz"),
-            docker_snapshots, docker_volume_snapshots,
+            docker_snapshots, docker_volume_snapshots, actions_snapshot,
         )
 
 

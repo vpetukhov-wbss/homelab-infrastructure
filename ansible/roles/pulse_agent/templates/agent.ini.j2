@@ -8,6 +8,9 @@ send_limit = 4
 {% if pulse_agent_nginx_status_url %}
 nginx_status_url = {{ pulse_agent_nginx_status_url }}
 {% endif %}
+{% if pulse_agent_gitea_actions_db %}
+gitea_actions_snapshot = /run/pulse-actions/actions.json
+{% endif %}
 {% if pulse_agent_gitea_health_url %}
 gitea_health_url = {{ pulse_agent_gitea_health_url }}
 {% endif %}

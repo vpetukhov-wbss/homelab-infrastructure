@@ -105,7 +105,13 @@ Each probe uses a one-second socket timeout and reads at most 64 KiB of manageme
 
 Set `gitea_health_url` under `[agent]` or `pulse_agent_gitea_health_url` in private Ansible inventory. Use the existing Gitea 1.22 `/api/healthz` endpoint on loopback or a private IP literal. The probe uses GET without credentials, proxies or redirects. It reports database and cache health and the HTTP response time in milliseconds, excluding the response text and endpoint details.
 
-Gitea can respond with HTTP 424 and still provide valid readings that identify an unhealthy dependency. A connection failure or a response without both Gitea checks is `unavailable`. The probe uses a one-second socket timeout and accepts up to 8 KiB of JSON. The periodic host cycle reuses an observation for 30 seconds, keeping its original UTC timestamp. The `sample` command probes directly. Gitea Actions queue, run durations and runner status are separate measurements.
+Gitea can respond with HTTP 424 and still provide valid readings that identify an unhealthy dependency. A connection failure or a response without both Gitea checks is `unavailable`. The probe uses a one-second socket timeout and accepts up to 8 KiB of JSON. The periodic host cycle reuses an observation for 30 seconds, keeping its original UTC timestamp. The `sample` command probes directly.
+
+### Gitea Actions and runners
+
+Set `pulse_agent_gitea_actions_db` in private Ansible inventory on the Gitea host to the absolute host path of Gitea 1.22.6's SQLite database inside the stack's bind-mounted data directory. Leave the setting empty on other hosts. The role runs `pulse-actions.timer` every minute under a separate unprivileged account. Give only `pulse-actions` directory traversal and read access to the database and any existing SQLite WAL and SHM sidecars, including after file rotation or recreation. SQLite in WAL mode may require those sidecars to already exist for a read-only reader. The probe does not change SQLite journal mode. The main agent reads only the aggregate snapshot. For local runs, set `gitea_actions_snapshot` under `[agent]` to an absolute path to a snapshot from the producer.
+
+The `giteaActions` reading counts waiting, running and blocked jobs, and successful, failed, cancelled and skipped jobs updated within the last hour. Finished jobs with valid start and stop times contribute to the sample count and mean duration in whole seconds. Runner counts use Gitea's 60-second online and 10-second active heartbeat windows. Repository names, IDs, job names, logs and runner addresses are excluded. The SQLite query has a one-second execution budget, a 200 ms lock wait, and a five-second service timeout. A fresh failed query is `unavailable`. A snapshot older than three minutes is `stale` and carries its last observation time. Verify this probe against a simulated database when upgrading Gitea because it reads the 1.22.6 Actions schema.
 
 ## Docker workloads
 
@@ -150,6 +156,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 - `pulse_agent_docker_containers` enables the separate Docker workload producer.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
+- `pulse_agent_gitea_actions_db` enables local read-only Actions and runner metrics.
 - `pulse_agent_gitea_health_url` enables probes against the existing private Gitea health endpoint.
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
 - `pulse_agent_redis_host` enables Redis monitoring using the dedicated service credential.
@@ -160,4 +167,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health and Actions, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

@@ -96,6 +96,9 @@
         "rabbitmq": {
           "$ref": "#/$defs/rabbitmqReading"
         },
+        "giteaActions": {
+          "$ref": "#/$defs/giteaActionsReading"
+        },
         "gitea": {
           "$ref": "#/$defs/giteaReading"
         }
@@ -179,6 +182,43 @@
         ]
       },
       "else": { "maxProperties": 1 }
+    },
+    "giteaActionsReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable", "stale"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "waitingJobs": { "type": "integer", "minimum": 0 },
+        "runningJobs": { "type": "integer", "minimum": 0 },
+        "blockedJobs": { "type": "integer", "minimum": 0 },
+        "successfulJobsLastHour": { "type": "integer", "minimum": 0 },
+        "failedJobsLastHour": { "type": "integer", "minimum": 0 },
+        "cancelledJobsLastHour": { "type": "integer", "minimum": 0 },
+        "skippedJobsLastHour": { "type": "integer", "minimum": 0 },
+        "activeRunners": { "type": "integer", "minimum": 0 },
+        "idleRunners": { "type": "integer", "minimum": 0 },
+        "offlineRunners": { "type": "integer", "minimum": 0 },
+        "timedJobsLastHour": { "type": "integer", "minimum": 0 },
+        "meanJobDurationSecondsLastHour": { "type": "integer", "minimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": {
+        "required": [
+          "observedAt", "waitingJobs", "runningJobs", "blockedJobs",
+          "successfulJobsLastHour", "failedJobsLastHour", "cancelledJobsLastHour",
+          "skippedJobsLastHour", "activeRunners", "idleRunners", "offlineRunners", "timedJobsLastHour"
+        ],
+        "if": { "properties": { "timedJobsLastHour": { "minimum": 1 } } },
+        "then": { "required": ["meanJobDurationSecondsLastHour"] },
+        "else": { "not": { "required": ["meanJobDurationSecondsLastHour"] } }
+      },
+      "else": {
+        "propertyNames": { "enum": ["status", "observedAt"] },
+        "if": { "properties": { "status": { "const": "stale" } } },
+        "then": { "required": ["observedAt"] }
+      }
     },
     "giteaReading": {
       "type": "object",

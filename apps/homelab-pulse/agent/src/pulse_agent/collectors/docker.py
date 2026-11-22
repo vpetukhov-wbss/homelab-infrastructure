@@ -1,8 +1,8 @@
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+
+from ..snapshots import read_snapshot
 
 STATES = ("created", "running", "paused", "restarting", "removing", "exited", "dead")
 HEALTH = ("starting", "healthy", "unhealthy")
@@ -55,12 +55,12 @@ def usage_metrics(data: dict) -> dict[str, object]:
 
 def collect(paths: dict[str, str]) -> dict[str, dict[str, object]]:
     now = datetime.now(timezone.utc)
-    return {alias: _read_snapshot(Path(path), now) for alias, path in paths.items()}
+    return {alias: read_snapshot(Path(path), now, metrics, FRESH_SECONDS) for alias, path in paths.items()}
 
 
 def collect_volumes(paths: dict[str, str]) -> dict[str, dict[str, object]]:
     now = datetime.now(timezone.utc)
-    return {alias: _read_snapshot(Path(path), now, volume_metrics, 900) for alias, path in paths.items()}
+    return {alias: read_snapshot(Path(path), now, volume_metrics, 900) for alias, path in paths.items()}
 
 
 def volume_metrics(data: dict) -> dict[str, int]:
@@ -72,33 +72,3 @@ def volume_metrics(data: dict) -> dict[str, int]:
     if type(capacity) is int and type(free) is int and 0 <= free <= capacity <= MAX_INTEGER:
         values.update(filesystemCapacityBytes=capacity, filesystemAvailableBytes=free)
     return values
-
-
-def _read_snapshot(
-    path: Path, now: datetime, extract: Callable = metrics, fresh_seconds: int = FRESH_SECONDS,
-) -> dict[str, object]:
-    unavailable = {"status": "unavailable"}
-    try:
-        with path.open(encoding="utf-8") as stream:
-            payload = stream.read(MAX_SNAPSHOT_CHARS + 1)
-        if len(payload) > MAX_SNAPSHOT_CHARS:
-            return unavailable
-        snapshot = json.loads(payload)
-        observed = snapshot["observedAt"]
-        if not isinstance(observed, str) or not observed.endswith("Z"):
-            return unavailable
-        observed_at = datetime.fromisoformat(observed[:-1] + "+00:00")
-        age = (now - observed_at).total_seconds()
-        if age < 0:
-            return unavailable
-        status = snapshot["status"]
-        selected = extract(snapshot) if status == "available" else {}
-    except (OSError, KeyError, TypeError, ValueError, RecursionError):
-        return unavailable
-
-    stamp = observed_at.isoformat(timespec="seconds").replace("+00:00", "Z")
-    if age > fresh_seconds and (selected or status == "unavailable"):
-        return {"status": "stale", "observedAt": stamp}
-    if selected:
-        return {"status": "available", "observedAt": stamp, **selected}
-    return {"status": "unavailable", "observedAt": stamp} if status == "unavailable" else unavailable
