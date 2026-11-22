@@ -101,6 +101,12 @@ For Ansible, set `pulse_agent_rabbitmq_host`, `pulse_agent_rabbitmq_port`, `puls
 
 Each probe uses a one-second socket timeout and reads at most 64 KiB of management JSON plus one byte to detect oversized responses. An unreachable broker, failed authentication, missing queue or missing counters yield `unavailable`. Zero indicates a reported zero. The periodic host cycle reuses a reading for 30 seconds with its original timestamp. The `sample` command takes a fresh reading.
 
+## Gitea
+
+Set `gitea_health_url` under `[agent]` or `pulse_agent_gitea_health_url` in private Ansible inventory. Use the existing Gitea 1.22 `/api/healthz` endpoint on loopback or a private IP literal. The probe uses GET without credentials, proxies or redirects. It reports database and cache health and the HTTP response time in milliseconds, excluding the response text and endpoint details.
+
+Gitea can respond with HTTP 424 and still provide valid readings that identify an unhealthy dependency. A connection failure or a response without both Gitea checks is `unavailable`. The probe uses a one-second socket timeout and accepts up to 8 KiB of JSON. The periodic host cycle reuses an observation for 30 seconds, keeping its original UTC timestamp. The `sample` command probes directly. Gitea Actions queue, run durations and runner status are separate measurements.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -123,6 +129,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
+- `pulse_agent_gitea_health_url` enables probes against the existing private Gitea health endpoint.
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
 - `pulse_agent_redis_host` enables Redis monitoring using the dedicated service credential.
 - `pulse_agent_postgres_host` enables PostgreSQL monitoring using the dedicated libpq password file.
@@ -132,4 +139,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

@@ -85,6 +85,9 @@
         },
         "rabbitmq": {
           "$ref": "#/$defs/rabbitmqReading"
+        },
+        "gitea": {
+          "$ref": "#/$defs/giteaReading"
         }
       }
     }
@@ -93,6 +96,21 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "giteaReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "databaseHealthy": { "type": "boolean" },
+        "cacheHealthy": { "type": "boolean" },
+        "responseTimeMs": { "type": "integer", "minimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": { "required": ["databaseHealthy", "cacheHealthy", "responseTimeMs"] },
+      "else": { "maxProperties": 2 }
+    },
     "rabbitmqReading": {
       "type": "object",
       "additionalProperties": false,

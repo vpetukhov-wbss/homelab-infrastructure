@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
+from . import gitea, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -65,6 +65,9 @@ def collect(
         values["postgresql"] = postgresql.collect(config.postgresql, config.state_directory if use_cache else None)
     if config.rabbitmq:
         values["rabbitmq"] = rabbitmq.collect(config.rabbitmq, config.state_directory if use_cache else None)
+    if config.gitea_health_url:
+        cache_dir = config.state_directory if use_cache else None
+        values["gitea"] = gitea.collect(config.gitea_health_url, cache_dir)
     return values
 
 

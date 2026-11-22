@@ -55,6 +55,7 @@ class Config:
     redis: RedisSettings | None = None
     postgresql: PostgreSQLSettings | None = None
     rabbitmq: RabbitMQSettings | None = None
+    gitea_health_url: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -98,8 +99,9 @@ class Config:
         return cls(
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
-            smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")), sqlite_databases,
+            smart_snapshots, _private_probe_url(agent.get("nginx_status_url", ""), "NGINX status"), sqlite_databases,
             _redis_settings(parser), _postgresql_settings(parser), _rabbitmq_settings(parser),
+            _private_probe_url(agent.get("gitea_health_url", ""), "Gitea health", suffix="/api/healthz"),
         )
 
 
@@ -110,18 +112,18 @@ def _aliases(parser: configparser.ConfigParser, section: str) -> dict[str, str]:
     return values
 
 
-def _nginx_status_url(value: str) -> str | None:
+def _private_probe_url(value: str, label: str, *, suffix: str = "") -> str | None:
     if not value:
         return None
     url = urlsplit(value)
     if (
         any(ord(char) <= 32 or ord(char) == 127 for char in value)
         or url.scheme not in {"http", "https"} or url.username is not None or url.password is not None
-        or not url.path or "?" in value or "#" in value or url.port == 0
+        or not url.path or not url.path.endswith(suffix) or "?" in value or "#" in value or url.port == 0
     ):
-        raise ValueError("Invalid NGINX status URL")
+        raise ValueError(f"Invalid {label} URL")
     if not _private_ip_literal(url.hostname or ""):
-        raise ValueError("NGINX status URL requires a private IP literal")
+        raise ValueError(f"{label} URL requires a private IP literal")
     return value
 
 
