@@ -24,6 +24,7 @@ class Config:
     fans: dict[str, str] = field(default_factory=dict)
     smart_snapshots: dict[str, str] = field(default_factory=dict)
     nginx_status_url: str | None = None
+    sqlite_databases: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -53,9 +54,12 @@ class Config:
         network = _aliases(parser, "network")
         disks = _aliases(parser, "disks")
         smart_snapshots = _aliases(parser, "smart_snapshots")
+        sqlite_databases = _aliases(parser, "sqlite_databases")
         local_paths = (*filesystems.values(), *temperatures.values(), *fans.values(), *smart_snapshots.values())
         if not all(Path(value).is_absolute() for value in local_paths):
             raise ValueError("Filesystem and sensor paths must be absolute")
+        if not all(Path(value).is_absolute() for value in sqlite_databases.values()):
+            raise ValueError("SQLite database paths must be absolute")
         if not all(re.fullmatch(r"[A-Za-z0-9_-]{1,15}", name) for name in network.values()):
             raise ValueError("Invalid interface name")
         if not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name) for name in disks.values()):
@@ -64,7 +68,7 @@ class Config:
         return cls(
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
-            smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")),
+            smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")), sqlite_databases,
         )
 
 

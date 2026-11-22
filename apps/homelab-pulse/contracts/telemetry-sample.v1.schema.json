@@ -71,6 +71,11 @@
         },
         "nginx": {
           "$ref": "#/$defs/nginxReading"
+        },
+        "sqliteStorage": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": { "$ref": "#/$defs/sqliteStorageReading" }
         }
       }
     }
@@ -79,6 +84,25 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "sqliteStorageReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "databaseBytes": { "$ref": "#/$defs/bytes" },
+        "walBytes": { "$ref": "#/$defs/bytes" },
+        "sharedMemoryBytes": { "$ref": "#/$defs/bytes" },
+        "rollbackJournalBytes": { "$ref": "#/$defs/bytes" },
+        "totalBytes": { "$ref": "#/$defs/bytes" }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": {
+        "required": ["databaseBytes", "walBytes", "sharedMemoryBytes", "rollbackJournalBytes", "totalBytes"]
+      },
+      "else": { "maxProperties": 2 }
+    },
     "nginxReading": {
       "type": "object",
       "additionalProperties": false,

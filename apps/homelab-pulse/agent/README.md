@@ -61,6 +61,20 @@ Set `nginx_status_url` under `[agent]` or `pulse_agent_nginx_status_url` in priv
 
 The host cycle records active, reading, writing and waiting connections along with cumulative accepted connections, handled connections and requests. Each reading includes its own UTC observation time. Connection errors, timeouts, unexpected HTTP responses and malformed bodies report `unavailable` while host metrics continue. The socket timeout is one second and the response is limited to 1 KiB. With an empty URL, the agent omits this collector.
 
+## SQLite storage
+
+Map each approved database alias to its absolute path in `[sqlite_databases]`, or set `pulse_agent_sqlite_databases` in private Ansible inventory. The normal host cycle records the logical size of the database, WAL, shared-memory index and rollback journal in bytes, along with their sum and a UTC timestamp. Absent sidecars count as zero. Since SQLite can create or delete these files during a write or checkpoint, sizes are a point-in-time estimate. Missing or inaccessible databases and non-regular files report `unavailable` independently of other metrics.
+
+The collector uses filesystem metadata only. It opens no SQLite connections, performs no queries and exports no paths or database contents. Use paths that the `pulse-agent` service can traverse. The app-host data directory lives under a home directory, which systemd hides from the agent by default. When enabling the collector for that directory, use a local `pulse-agent.service` drop-in that exposes only the required SQLite directory read-only. The following paths are examples:
+
+```ini
+[Service]
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/example/stacks/apphost/sqlite
+```
+
+Grant the service account directory traversal only where needed. A backup file can also be measured by configuring its path and using an alias that identifies it as a backup.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -83,9 +97,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
+- `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, NGINX status, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, database, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, PostgreSQL, Redis, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

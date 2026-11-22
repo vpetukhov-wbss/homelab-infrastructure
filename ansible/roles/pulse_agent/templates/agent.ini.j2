@@ -43,3 +43,8 @@ nginx_status_url = {{ pulse_agent_nginx_status_url }}
 {% for alias in pulse_agent_smart_devices | sort %}
 {{ alias }} = /run/pulse-smart/{{ alias }}.json
 {% endfor %}
+
+[sqlite_databases]
+{% for alias, path in pulse_agent_sqlite_databases | dictsort %}
+{{ alias }} = {{ path }}
+{% endfor %}
