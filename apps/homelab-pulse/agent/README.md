@@ -107,6 +107,16 @@ Set `gitea_health_url` under `[agent]` or `pulse_agent_gitea_health_url` in priv
 
 Gitea can respond with HTTP 424 and still provide valid readings that identify an unhealthy dependency. A connection failure or a response without both Gitea checks is `unavailable`. The probe uses a one-second socket timeout and accepts up to 8 KiB of JSON. The periodic host cycle reuses an observation for 30 seconds, keeping its original UTC timestamp. The `sample` command probes directly. Gitea Actions queue, run durations and runner status are separate measurements.
 
+## Docker workload metadata
+
+Set `pulse_agent_docker_containers` in private Ansible inventory to a mapping of up to eight approved aliases to exact Docker container names. For example, map `worker` to `demo-worker`. The role uses the installed Docker CLI and schedules `pulse-docker.timer` every 60 seconds. Each read has a two-second timeout.
+
+Only the separate `pulse-docker.service` gets the Docker supplementary group while running. Treat that group as privileged. The service uses a fixed local Unix socket and a fixed `docker container inspect` command template. The main agent has the socket hidden and reads only group-readable snapshots. Container names, inspect output, environment variables and health messages stay out of the snapshots and the telemetry.
+
+`dockerWorkloads` reports container state, health when Docker reports one, the container's restart counter and policy, and configured CPU and memory limits where present. The restart counter belongs to the current container instance. Limits describe configuration. Live resource use and volume measurements require separate collectors.
+
+An unsuccessful inspect records `unavailable`. A snapshot over three minutes old reports `stale` with its original observation time. The `sample` command can read normalized files via `[docker_snapshots]`, mapping each alias to an absolute path. Clear the inventory mapping to disable managed polling.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -128,6 +138,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_filesystems`, `pulse_agent_interfaces`, `pulse_agent_temperatures` and `pulse_agent_fans` map approved aliases to host resources.
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
+- `pulse_agent_docker_containers` enables the separate Docker metadata producer.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 - `pulse_agent_gitea_health_url` enables probes against the existing private Gitea health endpoint.
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
@@ -139,4 +150,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, Docker workload metadata, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker usage and volumes, and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

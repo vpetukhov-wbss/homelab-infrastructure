@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import gitea, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
+from . import docker, gitea, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -55,6 +55,8 @@ def collect(
         values["fanSpeedsRpm"] = _fan_speeds(config.fans)
     if config.smart_snapshots:
         values["diskSmart"] = smart.collect(config.smart_snapshots)
+    if config.docker_snapshots:
+        values["dockerWorkloads"] = docker.collect(config.docker_snapshots)
     if config.nginx_status_url:
         values["nginx"] = nginx.collect(config.nginx_status_url)
     if config.sqlite_databases:

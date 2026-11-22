@@ -1,0 +1,92 @@
+---
+- name: Check that Docker container configuration is a mapping
+  ansible.builtin.assert:
+    that:
+      - pulse_agent_docker_containers is mapping
+      - pulse_agent_docker_containers | length <= 8
+
+- name: Validate Docker aliases and exact container names
+  ansible.builtin.assert:
+    that:
+      - item.key is string and item.key is match('^[a-z][a-z0-9_-]{0,31}\Z')
+      - >-
+        item.value is string and
+        item.value is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}\Z')
+    quiet: true
+  loop: "{{ pulse_agent_docker_containers | dict2items }}"
+  no_log: true
+
+- name: Install the Docker producer configuration and units
+  when: pulse_agent_docker_containers | length > 0
+  block:
+    - name: Check the local Docker CLI binary
+      ansible.builtin.stat:
+        path: /usr/bin/docker
+      register: pulse_agent_docker_cli
+
+    - name: Require the Docker CLI from the Docker role
+      ansible.builtin.assert:
+        that:
+          - pulse_agent_docker_cli.stat.executable | default(false)
+        fail_msg: Install the Docker CLI before enabling the Pulse Docker probe.
+
+    - name: Create the restricted producer account
+      ansible.builtin.user:
+        name: pulse-docker
+        group: pulse-agent
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Write the approved Docker container list
+      ansible.builtin.copy:
+        content: "{{ pulse_agent_docker_containers | to_nice_json }}\n"
+        dest: /etc/pulse-agent/docker-containers.json
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Install Docker producer systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - pulse-docker.service
+        - pulse-docker.timer
+
+    - name: Enable the Docker polling timer
+      ansible.builtin.systemd_service:
+        name: pulse-docker.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+
+- name: Disable previously configured Docker polling
+  when: pulse_agent_docker_containers | length == 0
+  block:
+    - name: Check for the Docker timer unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/pulse-docker.timer
+      register: pulse_agent_docker_timer
+
+    - name: Stop the Docker timer
+      ansible.builtin.systemd_service:
+        name: pulse-docker.timer
+        enabled: false
+        state: stopped
+      when: pulse_agent_docker_timer.stat.exists
+
+    - name: Stop any in-flight Docker probe
+      ansible.builtin.systemd_service:
+        name: pulse-docker.service
+        state: stopped
+      when: pulse_agent_docker_timer.stat.exists
+
+    - name: Remove the unused Docker container mapping
+      ansible.builtin.file:
+        path: /etc/pulse-agent/docker-containers.json
+        state: absent

@@ -60,6 +60,9 @@
 - name: Configure the local SMART producer
   ansible.builtin.import_tasks: smart.yml
 
+- name: Configure the local Docker producer
+  ansible.builtin.import_tasks: docker.yml
+
 - name: Require a dedicated Redis monitoring credential
   ansible.builtin.assert:
     that:

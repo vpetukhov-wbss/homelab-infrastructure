@@ -9,6 +9,7 @@ pulse_agent_fans: {}
 pulse_agent_disks: {}
 pulse_agent_smart_snapshots: {}
 pulse_agent_smart_devices: {}
+pulse_agent_docker_containers: {}
 pulse_agent_nginx_status_url: ""
 pulse_agent_gitea_health_url: ""
 pulse_agent_sqlite_databases: {}

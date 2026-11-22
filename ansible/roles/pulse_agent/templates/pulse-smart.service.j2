@@ -25,6 +25,7 @@ ProtectHome=true
 PrivateTmp=true
 InaccessiblePaths=-/etc/pulse-agent/ingest-token -/etc/pulse-agent/redis-password -/var/lib/pulse-agent
 InaccessiblePaths=-/etc/pulse-agent/postgres-pgpass -/etc/pulse-agent/rabbitmq-password
+InaccessiblePaths=-/run/docker.sock -/etc/pulse-agent/docker-containers.json
 ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectControlGroups=true

@@ -69,6 +69,11 @@
           "propertyNames": { "$ref": "#/$defs/alias" },
           "additionalProperties": { "$ref": "#/$defs/diskSmartReading" }
         },
+        "dockerWorkloads": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": { "$ref": "#/$defs/dockerWorkloadReading" }
+        },
         "nginx": {
           "$ref": "#/$defs/nginxReading"
         },
@@ -96,6 +101,29 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "dockerWorkloadReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable", "stale"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "state": { "enum": ["created", "running", "paused", "restarting", "removing", "exited", "dead"] },
+        "health": { "enum": ["starting", "healthy", "unhealthy"] },
+        "restartCount": { "type": "integer", "minimum": 0 },
+        "restartPolicy": { "enum": ["no", "always", "on-failure", "unless-stopped"] },
+        "memoryLimitBytes": { "type": "integer", "minimum": 1 },
+        "cpuLimitCores": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": { "required": ["observedAt", "state", "restartCount", "restartPolicy"] },
+      "else": {
+        "maxProperties": 2,
+        "if": { "properties": { "status": { "const": "stale" } } },
+        "then": { "required": ["observedAt"] },
+        "propertyNames": { "enum": ["status", "observedAt"] }
+      }
+    },
     "giteaReading": {
       "type": "object",
       "additionalProperties": false,

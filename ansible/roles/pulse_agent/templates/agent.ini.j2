@@ -47,6 +47,11 @@ gitea_health_url = {{ pulse_agent_gitea_health_url }}
 {{ alias }} = /run/pulse-smart/{{ alias }}.json
 {% endfor %}
 
+[docker_snapshots]
+{% for alias in pulse_agent_docker_containers | sort %}
+{{ alias }} = /run/pulse-docker/{{ alias }}.json
+{% endfor %}
+
 [sqlite_databases]
 {% for alias, path in pulse_agent_sqlite_databases | dictsort %}
 {{ alias }} = {{ path }}
