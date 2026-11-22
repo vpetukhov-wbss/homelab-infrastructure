@@ -93,9 +93,12 @@ the password manager never shares a host with CI jobs.
   it, so a DHCP install would have moved it. The Wi-Fi is now pinned to the same address,
   gateway and DNS servers (`--wifi-address`), checked with `netplan generate`. Written
   and read back: image sha256 `577920af…`.
-- [x] The stick's exact configuration was tested end to end in a UEFI VM on 2026-11-21.
-  The VM had the disk serial set and no network, like the laptop without a cable.
-  The test found three bugs before any hardware was wiped:
+- [x] The install and restore flow was tested end to end in a UEFI VM on 2026-11-21, with
+  a variant of the stick's configuration: a direct kernel boot with the `autoinstall`
+  argument, the identity set without prompts, a test sudoers drop-in and a test bundle
+  with its own password. It predates the static Wi-Fi address. The VM had the disk
+  serial set and no network, like the laptop without a cable. The test found three bugs
+  before any hardware was wiped:
   - Wi-Fi in the live installer aborted the install (`iw` is missing);
   - `homelab-restore` could not read its own staged files as the user;
   - `homelab-restore` hit a stale apt index after the offline install.
@@ -104,6 +107,11 @@ the password manager never shares a host with CI jobs.
   - `ansible homelab -m ping` from the restored VM reaches node1–3;
   - the deploy key can push;
   - Claude Code installs.
+- [x] The final image was booted on 2026-11-22 in a Secure Boot UEFI VM (OVMF with the
+  Microsoft keys), read-only, with no network and a disk carrying the configured
+  serial. It went through GRUB and the Profile configuration screen to the "Confirm
+  destructive action" dialog (default No); nothing was written to the disk. Joining the
+  Wi-Fi with the static address has not run on the real hardware yet.
 - [ ] The owner saves personal data that the bundle does not carry.
 - [ ] Install, then run `sudo homelab-restore`.
 
@@ -118,11 +126,17 @@ the password manager never shares a host with CI jobs.
 - [ ] Add node4 to the mesh as `wg_overlay_ip: 10.44.0.4`, so `wg1` grows from 3 to 4
   peers. The `wireguard` and `redis_topology` roles list the three servers explicitly
   today.
-- [ ] Apply `base`, `host_hardening`, `security` and `fail2ban` to node4. First, make the
-  `firewall` role read the SSH port from `sshd -T` as `fail2ban` already does. node4
-  connects locally and has no `ansible_port`, so the role would allow 22 while sshd
-  listens on 2345.
-- [ ] Keep node4's SSH reachable from outside until M4 is done.
+- [ ] Apply `base`, `host_hardening`, `security` and `fail2ban` to node4. `security.yml`
+  targets only the three servers today. Before node4 joins it, make the `firewall` role
+  read the SSH port from `sshd -T` as `fail2ban` already does (node4 connects locally and
+  has no `ansible_port`, so the role would allow 22 while sshd listens on 2345) **and**
+  give node4 an explicit exception for 2345 from anywhere: the role allows SSH from
+  `lan_cidr` only and deletes the any-source rule, so the router's forward would stop
+  working. Apply it with a rollback timer, and test from the LAN and from outside before
+  cancelling the timer.
+- [ ] Keep node4's SSH reachable from outside until M4 is done. Until `ufw` and
+  `fail2ban` are applied, node4 is a bare key-only sshd on a port that is probed from the
+  Internet.
 - [ ] Docker on node4; Wi-Fi power saving off.
 
 **Done when:**

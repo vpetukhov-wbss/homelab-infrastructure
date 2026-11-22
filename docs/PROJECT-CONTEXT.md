@@ -340,6 +340,20 @@ now written only into the installed system, and the country is set through a
 > **Test an installer in a VM with the real configuration before wiping hardware.**
 > Schema validation and source reading did not catch this. Running it did.
 
+### The stick never asks "Continue with autoinstall?"
+
+The docs and the install plan said the owner would type `yes` at "Continue with
+autoinstall?". That prompt exists only when the autoinstall is fully non-interactive.
+This stick keeps `identity` interactive, so the installer shows the Profile
+configuration screen and then a "Confirm destructive action" dialog whose default is No.
+Typing `yes` into the Profile form would only have corrupted it. The gate itself works:
+nothing is written before Continue. A read-only boot of the final image in a UEFI VM on
+2026-11-22 showed the dialog. The earlier VM test booted the kernel directly with the
+`autoinstall` argument, so it never saw the boot menu or the dialog.
+
+> **A test that skips the boot menu does not test the boot path.** Boot the artefact the
+> way the owner will.
+
 ### A secret printed to a terminal ends up wherever the terminal is copied
 
 The first `vault operator init` was pasted, output and all, into a chat on 2026-11-21 —
