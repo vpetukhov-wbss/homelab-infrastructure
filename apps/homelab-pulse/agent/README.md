@@ -119,6 +119,12 @@ The optional `usage` object carries measured CPU usage and memory for the snapsh
 
 Set `pulse_agent_docker_volumes` in private inventory to up to 16 public-safe aliases mapped to distinct exact named volumes. The existing Docker probe adds `volumeAttachments` to each inspected workload. It reports `ro`, `rw`, or `mixed` when one workload has both modes for an approved volume. An empty map means the workload has no approved volume attachments. A stopped container can still have configured attachments. Original names, mount paths and bind mounts stay out of telemetry. Volume size and backing filesystem capacity are separate measurements.
 
+### Docker volume storage
+
+Set `pulse_agent_docker_volume_paths` in private inventory to up to eight aliases mapped to the absolute data directories of approved local volumes. Use the same aliases as `pulse_agent_docker_volumes` to join storage and attachment readings. The operator selects the directories and grants the `pulse-agent` account only the traversal and read access needed for those directories. The role uses a separate read-only service without Docker socket access or the Docker group. It runs every five minutes and stores sanitized snapshots for the normal agent cycle.
+
+The `dockerVolumes` reading reports allocated bytes counted by `du -x` and, separately, total and available bytes on the backing filesystem. Shared filesystem figures can repeat across volumes and represent no per-volume quota. A directory scan has five seconds and a filesystem query has one second. If either measurement fails, the other can still be reported. A snapshot older than 15 minutes reports `stale`. The `[docker_volume_snapshots]` INI section supports pre-collected files for local runs.
+
 An unsuccessful inspect records `unavailable`. A snapshot over three minutes old reports `stale` with its original observation time. The `sample` command can read normalized files via `[docker_snapshots]`, mapping each alias to an absolute path. Clear the inventory mapping to disable managed polling.
 
 ## Delivery
@@ -154,4 +160,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, Docker workload metrics and attachments, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker volume capacity, and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

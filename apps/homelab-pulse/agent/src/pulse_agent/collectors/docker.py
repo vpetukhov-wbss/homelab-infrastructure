@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 STATES = ("created", "running", "paused", "restarting", "removing", "exited", "dead")
 HEALTH = ("starting", "healthy", "unhealthy")
@@ -57,7 +58,25 @@ def collect(paths: dict[str, str]) -> dict[str, dict[str, object]]:
     return {alias: _read_snapshot(Path(path), now) for alias, path in paths.items()}
 
 
-def _read_snapshot(path: Path, now: datetime) -> dict[str, object]:
+def collect_volumes(paths: dict[str, str]) -> dict[str, dict[str, object]]:
+    now = datetime.now(timezone.utc)
+    return {alias: _read_snapshot(Path(path), now, volume_metrics, 900) for alias, path in paths.items()}
+
+
+def volume_metrics(data: dict) -> dict[str, int]:
+    values = {}
+    used = data.get("usedBytes")
+    if type(used) is int and 0 <= used <= MAX_INTEGER:
+        values["usedBytes"] = used
+    capacity, free = data.get("filesystemCapacityBytes"), data.get("filesystemAvailableBytes")
+    if type(capacity) is int and type(free) is int and 0 <= free <= capacity <= MAX_INTEGER:
+        values.update(filesystemCapacityBytes=capacity, filesystemAvailableBytes=free)
+    return values
+
+
+def _read_snapshot(
+    path: Path, now: datetime, extract: Callable = metrics, fresh_seconds: int = FRESH_SECONDS,
+) -> dict[str, object]:
     unavailable = {"status": "unavailable"}
     try:
         with path.open(encoding="utf-8") as stream:
@@ -73,12 +92,12 @@ def _read_snapshot(path: Path, now: datetime) -> dict[str, object]:
         if age < 0:
             return unavailable
         status = snapshot["status"]
-        selected = metrics(snapshot) if status == "available" else {}
+        selected = extract(snapshot) if status == "available" else {}
     except (OSError, KeyError, TypeError, ValueError, RecursionError):
         return unavailable
 
     stamp = observed_at.isoformat(timespec="seconds").replace("+00:00", "Z")
-    if age > FRESH_SECONDS and (selected or status == "unavailable"):
+    if age > fresh_seconds and (selected or status == "unavailable"):
         return {"status": "stale", "observedAt": stamp}
     if selected:
         return {"status": "available", "observedAt": stamp, **selected}

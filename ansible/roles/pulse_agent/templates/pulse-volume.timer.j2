@@ -1,0 +1,10 @@
+[Unit]
+Description=Measure HomeLab Pulse Docker volume storage every five minutes
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=5min
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

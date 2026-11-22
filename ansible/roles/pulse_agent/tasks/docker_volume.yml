@@ -1,0 +1,73 @@
+---
+- name: Check the Docker volume path map
+  ansible.builtin.assert:
+    that:
+      - pulse_agent_docker_volume_paths is mapping
+      - pulse_agent_docker_volume_paths | length <= 8
+
+- name: Validate Docker volume storage aliases and absolute directories
+  ansible.builtin.assert:
+    that:
+      - item.key is string and item.key is match('^[a-z][a-z0-9_-]{0,31}\Z')
+      - item.value is string and item.value is match('^/[^/]+(?:/[^/]+)*\Z')
+      - item.value is not search('(?:^|/)\.{1,2}(?:/|$)')
+      - item.value | length <= 4096
+    quiet: true
+  loop: "{{ pulse_agent_docker_volume_paths | dict2items }}"
+  no_log: true
+
+- name: Install and enable the volume storage probe
+  when: pulse_agent_docker_volume_paths | length > 0
+  block:
+    - name: Write the protected volume path map
+      ansible.builtin.copy:
+        content: "{{ pulse_agent_docker_volume_paths | to_nice_json }}\n"
+        dest: /etc/pulse-agent/docker-volume-paths.json
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Install volume storage systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - pulse-volume.service
+        - pulse-volume.timer
+
+    - name: Enable volume storage polling
+      ansible.builtin.systemd_service:
+        name: pulse-volume.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+
+- name: Disable unused volume storage polling
+  when: pulse_agent_docker_volume_paths | length == 0
+  block:
+    - name: Check for the installed volume timer
+      ansible.builtin.stat:
+        path: /etc/systemd/system/pulse-volume.timer
+      register: pulse_agent_volume_timer
+
+    - name: Stop and disable the installed volume timer
+      ansible.builtin.systemd_service:
+        name: pulse-volume.timer
+        enabled: false
+        state: stopped
+      when: pulse_agent_volume_timer.stat.exists
+
+    - name: Stop any in-flight volume measurements
+      ansible.builtin.systemd_service:
+        name: pulse-volume.service
+        state: stopped
+      when: pulse_agent_volume_timer.stat.exists
+
+    - name: Remove the unused volume path map
+      ansible.builtin.file:
+        path: /etc/pulse-agent/docker-volume-paths.json
+        state: absent

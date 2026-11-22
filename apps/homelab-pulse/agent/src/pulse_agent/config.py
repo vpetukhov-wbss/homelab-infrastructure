@@ -57,6 +57,7 @@ class Config:
     rabbitmq: RabbitMQSettings | None = None
     gitea_health_url: str | None = None
     docker_snapshots: dict[str, str] = field(default_factory=dict)
+    docker_volume_snapshots: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -87,11 +88,12 @@ class Config:
         disks = _aliases(parser, "disks")
         smart_snapshots = _aliases(parser, "smart_snapshots")
         docker_snapshots = _aliases(parser, "docker_snapshots")
+        docker_volume_snapshots = _aliases(parser, "docker_volume_snapshots")
         sqlite_databases = _aliases(parser, "sqlite_databases")
         local_paths = (*filesystems.values(), *temperatures.values(), *fans.values(), *smart_snapshots.values())
         if not all(Path(value).is_absolute() for value in local_paths):
             raise ValueError("Filesystem and sensor paths must be absolute")
-        if not all(Path(value).is_absolute() for value in docker_snapshots.values()):
+        if not all(Path(value).is_absolute() for value in (*docker_snapshots.values(), *docker_volume_snapshots.values())):
             raise ValueError("Docker snapshot paths must be absolute")
         if not all(Path(value).is_absolute() for value in sqlite_databases.values()):
             raise ValueError("SQLite database paths must be absolute")
@@ -106,7 +108,7 @@ class Config:
             smart_snapshots, _private_probe_url(agent.get("nginx_status_url", ""), "NGINX status"), sqlite_databases,
             _redis_settings(parser), _postgresql_settings(parser), _rabbitmq_settings(parser),
             _private_probe_url(agent.get("gitea_health_url", ""), "Gitea health", suffix="/api/healthz"),
-            docker_snapshots,
+            docker_snapshots, docker_volume_snapshots,
         )
 
 

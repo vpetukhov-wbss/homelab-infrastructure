@@ -1,0 +1,25 @@
+[Unit]
+Description=Measure approved local Docker volume storage for HomeLab Pulse
+After=docker.service
+
+[Service]
+Type=oneshot
+User=pulse-agent
+Group=pulse-agent
+WorkingDirectory=/opt/pulse-agent
+ExecStart={{ pulse_agent_python_path }} -B -m pulse_agent.docker_volume_probe %d/paths /run/pulse-volume
+LoadCredential=paths:/etc/pulse-agent/docker-volume-paths.json
+RuntimeDirectory=pulse-volume
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0027
+TimeoutStartSec=55s
+CapabilityBoundingSet=
+NoNewPrivileges=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+InaccessiblePaths=-/run/docker.sock -/etc/pulse-agent -/var/lib/pulse-agent

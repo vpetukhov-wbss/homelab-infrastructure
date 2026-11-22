@@ -57,6 +57,8 @@ def collect(
         values["diskSmart"] = smart.collect(config.smart_snapshots)
     if config.docker_snapshots:
         values["dockerWorkloads"] = docker.collect(config.docker_snapshots)
+    if config.docker_volume_snapshots:
+        values["dockerVolumes"] = docker.collect_volumes(config.docker_volume_snapshots)
     if config.nginx_status_url:
         values["nginx"] = nginx.collect(config.nginx_status_url)
     if config.sqlite_databases:
