@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import nginx, smart, sqlite_storage
+from . import nginx, redis_info, smart, sqlite_storage
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -26,6 +26,7 @@ def read_memory(proc: Path) -> dict[str, int]:
 
 def collect(
     config: Config, proc: Path = Path("/proc"), network_root: Path = Path("/sys/class/net"),
+    *, use_cache: bool = False,
 ) -> dict[str, object]:
     cpu = (proc / "stat").read_text(encoding="utf-8").splitlines()[0].split()
     if cpu[0] != "cpu" or len(cpu) < len(CPU_NAMES) + 1:
@@ -58,6 +59,8 @@ def collect(
         values["nginx"] = nginx.collect(config.nginx_status_url)
     if config.sqlite_databases:
         values["sqliteStorage"] = sqlite_storage.collect(config.sqlite_databases)
+    if config.redis:
+        values["redis"] = redis_info.collect(config.redis, config.state_directory if use_cache else None)
     return values
 
 

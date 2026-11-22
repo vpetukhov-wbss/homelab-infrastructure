@@ -10,6 +10,14 @@ PRIVATE_MONITORING_NETWORKS = tuple(map(ip_network, ("10.0.0.0/8", "172.16.0.0/1
 
 
 @dataclass(frozen=True)
+class RedisSettings:
+    host: str
+    port: int
+    username: str
+    password_file: Path | None
+
+
+@dataclass(frozen=True)
 class Config:
     ingest_url: str
     state_directory: Path
@@ -25,6 +33,7 @@ class Config:
     smart_snapshots: dict[str, str] = field(default_factory=dict)
     nginx_status_url: str | None = None
     sqlite_databases: dict[str, str] = field(default_factory=dict)
+    redis: RedisSettings | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -69,6 +78,7 @@ class Config:
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
             smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")), sqlite_databases,
+            _redis_settings(parser),
         )
 
 
@@ -89,13 +99,37 @@ def _nginx_status_url(value: str) -> str | None:
         or not url.path or "?" in value or "#" in value or url.port == 0
     ):
         raise ValueError("Invalid NGINX status URL")
-    try:
-        address = ip_address(url.hostname or "")
-    except ValueError:
-        raise ValueError("NGINX status URL requires a private IP literal") from None
-    if not address.is_loopback and not any(address in network for network in PRIVATE_MONITORING_NETWORKS):
+    if not _private_ip_literal(url.hostname or ""):
         raise ValueError("NGINX status URL requires a private IP literal")
     return value
+
+
+def _private_ip_literal(value: str) -> bool:
+    try:
+        address = ip_address(value)
+    except ValueError:
+        return False
+    return address.is_loopback or any(address in network for network in PRIVATE_MONITORING_NETWORKS)
+
+
+def _redis_settings(parser: configparser.ConfigParser) -> RedisSettings | None:
+    if not parser.has_section("redis"):
+        return None
+    section = parser["redis"]
+    host = section.get("host", "")
+    if not host:
+        return None
+    if not _private_ip_literal(host):
+        raise ValueError("Redis requires a private IP literal")
+    port = section.getint("port", fallback=6379)
+    username = section.get("username", "pulse-monitor")
+    if not 1 <= port <= 65535 or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", username) or username == "default":
+        raise ValueError("Redis requires a valid port and a dedicated ACL username")
+    path = section.get("password_file")
+    password_file = Path(path) if path else None
+    if password_file is not None and not password_file.is_absolute():
+        raise ValueError("Redis password_file must be absolute")
+    return RedisSettings(host, port, username, password_file)
 
 
 def read_token(path: Path | None) -> str:

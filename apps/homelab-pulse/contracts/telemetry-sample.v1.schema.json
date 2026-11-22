@@ -76,6 +76,9 @@
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/alias" },
           "additionalProperties": { "$ref": "#/$defs/sqliteStorageReading" }
+        },
+        "redis": {
+          "$ref": "#/$defs/redisReading"
         }
       }
     }
@@ -84,6 +87,26 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "redisReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "usedMemoryBytes": { "$ref": "#/$defs/bytes" },
+        "maxMemoryBytes": { "$ref": "#/$defs/bytes" },
+        "operationsPerSecond": { "type": "integer", "minimum": 0 },
+        "keyspaceHitsTotal": { "type": "integer", "minimum": 0 },
+        "keyspaceMissesTotal": { "type": "integer", "minimum": 0 },
+        "evictedKeysTotal": { "type": "integer", "minimum": 0 },
+        "connectedClients": { "type": "integer", "minimum": 0 },
+        "aofCurrentSizeBytes": { "$ref": "#/$defs/bytes" }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": { "required": ["usedMemoryBytes"] },
+      "else": { "maxProperties": 2 }
+    },
     "sqliteStorageReading": {
       "type": "object",
       "additionalProperties": false,

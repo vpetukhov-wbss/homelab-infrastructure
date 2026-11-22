@@ -10,6 +10,9 @@ User=pulse-agent
 WorkingDirectory=/opt/pulse-agent
 ExecStart={{ pulse_agent_python_path }} -B -m pulse_agent --config /etc/pulse-agent/agent.ini tick
 LoadCredential=ingest-token:/etc/pulse-agent/ingest-token
+{% if pulse_agent_redis_host %}
+LoadCredential=redis-password:/etc/pulse-agent/redis-password
+{% endif %}
 StateDirectory=pulse-agent
 StateDirectoryMode=0700
 UMask=0077

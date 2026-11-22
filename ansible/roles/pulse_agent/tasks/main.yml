@@ -57,6 +57,30 @@
 - name: Configure the local SMART producer
   ansible.builtin.import_tasks: smart.yml
 
+- name: Require a dedicated Redis monitoring credential
+  ansible.builtin.assert:
+    that:
+      - vault_pulse_agent_redis_password is defined
+      - vault_pulse_agent_redis_password | default('') | length > 0
+  when: pulse_agent_redis_host | length > 0
+  no_log: true
+
+- name: Install the Redis monitoring credential
+  ansible.builtin.copy:
+    content: "{{ vault_pulse_agent_redis_password }}"
+    dest: /etc/pulse-agent/redis-password
+    owner: root
+    group: root
+    mode: "0600"
+  when: pulse_agent_redis_host | length > 0
+  no_log: true
+
+- name: Remove an unused Redis monitoring credential
+  ansible.builtin.file:
+    path: /etc/pulse-agent/redis-password
+    state: absent
+  when: pulse_agent_redis_host | length == 0
+
 - name: Render approved metrics and private endpoint
   ansible.builtin.template:
     src: agent.ini.j2

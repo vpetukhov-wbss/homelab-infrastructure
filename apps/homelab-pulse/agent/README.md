@@ -11,7 +11,7 @@ PYTHONPATH=src python3 -m pulse_agent inventory
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-The `sample` command prints one private payload to stdout without requiring a token or making a network request. Filesystem, network, temperature and fan results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
+The `sample` command prints one private payload to stdout without contacting ingest or requiring its token. It runs any configured service probes. Filesystem, network, temperature and fan results use aliases from the configuration supplied by the operator. Use synthetic measurements in public demo artifacts.
 
 Enable fan monitoring with the optional `[fans]` section. Map each approved alias to an absolute Linux hwmon `fanN_input` path readable by the agent. The normal host cycle reports `fanSpeedsRpm` in RPM, including readings of zero. Failed or invalid readings are omitted for that cycle, and the agent logs only the alias. With no configured fans, the field is omitted.
 
@@ -75,6 +75,14 @@ BindReadOnlyPaths=/home/example/stacks/apphost/sqlite
 
 Grant the service account directory traversal only where needed. A backup file can also be measured by configuring its path and using an alias that identifies it as a backup.
 
+## Redis
+
+The optional `[redis]` section targets a single Redis 7 server per agent. Set `host` to a loopback or private IP literal on the trusted WireGuard network, with optional `port` and `username` settings. Use a dedicated ACL account with `+info` and no key or channel access. The probe uses a plain Redis connection, so use loopback or the encrypted overlay. The role leaves ACL provisioning and Redis listeners to the Redis operator.
+
+Ansible uses `pulse_agent_redis_host`, `pulse_agent_redis_port` and `pulse_agent_redis_username`. Set `vault_pulse_agent_redis_password` in the private vault. The rendered service gets a separate `redis-password` credential. For a local CLI run, set `password_file` in `[redis]` to a readable, absolute credential file path.
+
+The agent reports used memory, configured memory limit, instantaneous operations per second, connected clients, cache hit and miss totals, evictions and AOF size when AOF is enabled. A zero memory limit indicates Redis reported no configured cap. Compute hit ratio from changes in hit and miss counters within the same server life cycle. Each periodic probe uses a one-second deadline and Redis 7's multi-section `INFO` request. The host cycle reuses a reading for 30 seconds with its original observation time. Failures report `unavailable` while other metrics continue. The CLI `sample` command always takes a fresh reading without writing the cache.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -98,9 +106,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
+- `pulse_agent_redis_host` enables Redis monitoring using the dedicated service credential.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, PostgreSQL, Redis, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, PostgreSQL, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

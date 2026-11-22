@@ -48,3 +48,10 @@ nginx_status_url = {{ pulse_agent_nginx_status_url }}
 {% for alias, path in pulse_agent_sqlite_databases | dictsort %}
 {{ alias }} = {{ path }}
 {% endfor %}
+
+{% if pulse_agent_redis_host %}
+[redis]
+host = {{ pulse_agent_redis_host }}
+port = {{ pulse_agent_redis_port }}
+username = {{ pulse_agent_redis_username }}
+{% endif %}

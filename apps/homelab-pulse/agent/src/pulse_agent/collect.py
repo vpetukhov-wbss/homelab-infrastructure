@@ -17,7 +17,7 @@ def tick(config: Config, transport: Transport) -> int:
 
         collection_failed = False
         try:
-            outbox.enqueue(Sample.host(host.collect(config)))
+            outbox.enqueue(Sample.host(host.collect(config, use_cache=True)))
         except (OSError, ValueError, IndexError):
             LOG.error("Host collection failed")
             collection_failed = True
