@@ -129,7 +129,10 @@ Specialist subagents live in `.claude/agents/`. Use them when a task crosses dom
   (git-ignored)
 - `scripts/`: installer build/write, recovery bundle, homelab password rotation
 - `docs/`: handover, architecture, security, roadmap, runbooks
-- `.claude/`: agents, skills, rules, safety hooks
+- `.claude/`: agents, skills, rules, safety hooks, and `docs/` (working notes Claude loads
+  on demand, indexed in `.claude/docs/INDEX.md`: today the HomeLab Pulse UI plan and data
+  mapping)
+- `apps/`: application code (HomeLab Pulse: the monitoring agent and its contracts)
 
 ## Quality gates
 
@@ -155,6 +158,7 @@ README is the entry point. When behaviour changes, update the document that owns
 | an operational procedure | `docs/runbooks/` |
 | a milestone done or a decision made | `docs/roadmap.md` |
 | a trap that cost debugging time | `docs/PROJECT-CONTEXT.md` §7 |
+| the Pulse UI plan, its screens, or the telemetry-to-widget mapping | `.claude/docs/pulse-ui*.md` (index: `.claude/docs/INDEX.md`) |
 
 Everywhere, distinguish deployed, planned and cut.
 

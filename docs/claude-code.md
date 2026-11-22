@@ -16,6 +16,7 @@ commit is authored by the owner and carries no AI co-author line (see `CLAUDE.md
 | `.claude/agents/` | Specialist subagents with their own context |
 | `.claude/skills/` | Reusable workflows, invoked as `/skill-name` |
 | `.claude/hooks/` | Deterministic guardrails that run before tools (see below) |
+| `.claude/docs/` | Dated working notes loaded on demand, indexed in `INDEX.md`: the HomeLab Pulse UI plan and the telemetry-to-widget mapping |
 
 ## Specialists
 

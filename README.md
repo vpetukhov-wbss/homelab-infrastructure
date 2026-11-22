@@ -209,7 +209,7 @@ any hardware was wiped. See [installer/README.md](installer/README.md).
 ~~~mermaid
 flowchart LR
     subgraph each ["every machine"]
-        src["/proc · /sys · SMART snapshots<br/>NGINX · SQLite · Redis · PostgreSQL"] --> agent["pulse-agent<br/>every 15 s<br/>unprivileged"]
+        src["/proc · /sys · SMART snapshots<br/>NGINX · SQLite · Redis · PostgreSQL · RabbitMQ"] --> agent["pulse-agent<br/>every 15 s<br/>unprivileged"]
         agent --> q[("outbox<br/>on disk")]
     end
     q -- "POST over wg1<br/>token per machine" --> api["receiver (.NET)<br/>outside this repository<br/>history · live dashboard"]

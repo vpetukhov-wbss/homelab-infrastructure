@@ -29,7 +29,7 @@ flowchart TB
         snap --> agent
         agent -- "one file per sample" --> outbox[("outbox<br/>/var/lib/pulse-agent")]
     end
-    optional["optional probes, enabled per machine<br/>NGINX stub_status · SQLite file sizes<br/>Redis INFO, own ACL user<br/>PostgreSQL statistics, own read-only role"] --> agent
+    optional["optional probes, enabled per machine<br/>NGINX stub_status · SQLite file sizes<br/>Redis INFO, own ACL user<br/>PostgreSQL statistics, own read-only role<br/>RabbitMQ queue depth, own management user"] --> agent
     outbox -- "POST /internal/v1/telemetry<br/>bearer token · over wg1" --> api["receiver (.NET), outside this repository<br/>history · retention<br/>live dashboard (SignalR)"]
 ~~~
 
@@ -134,19 +134,19 @@ sequenceDiagram
 
 A snapshot dated in the future also counts as unavailable.
 
-## Redis and PostgreSQL probes
+## Redis, PostgreSQL and RabbitMQ probes
 
 ~~~mermaid
 sequenceDiagram
     autonumber
     participant A as pulse-agent tick
     participant K as probe cache in the state directory
-    participant S as Redis or PostgreSQL
+    participant S as Redis, PostgreSQL or RabbitMQ
     A->>K: a reading of the same target younger than 30 s?
     alt yes
         K-->>A: reuse it, with its original observation time
     else no
-        A->>S: Redis: INFO as its own ACL user, 1 s deadline<br/>PostgreSQL: statistics in a read-only transaction, 1 s statement timeout
+        A->>S: Redis: INFO as its own ACL user<br/>PostgreSQL: statistics in a read-only transaction<br/>RabbitMQ: one queue through the management API<br/>each with a 1 s limit
         alt it answers
             S-->>A: metrics
         else an error or a timeout
@@ -159,11 +159,13 @@ sequenceDiagram
 Each probe expects its own account:
 
 - a Redis ACL user that may run `INFO` and touch no keys;
-- a PostgreSQL login with `CONNECT` on one database.
+- a PostgreSQL login with `CONNECT` on one database;
+- a RabbitMQ user with the `management` tag and no permissions on the virtual host
+  (`^$`), which reads one queue.
 
 The agent refuses the `postgres` superuser and any address that is not loopback or
-private (RFC 1918 or IPv6 unique-local). The accounts themselves belong to the Redis and
-PostgreSQL roles, which do not create them yet.
+private (RFC 1918 or IPv6 unique-local). The accounts themselves belong to the Redis,
+PostgreSQL and RabbitMQ roles, which do not create them yet.
 
 ## Hardware inventory
 
