@@ -12,6 +12,10 @@ Optional:
                       install itself runs offline from the ISO unless a cable is in).
                       Give the 64-hex PSK (derived from passphrase + SSID), never the
                       passphrase: it grants network access but does not reveal it.
+  --wifi-address      with --wifi-gateway and --wifi-dns: a static IPv4 address for that
+                      Wi-Fi instead of DHCP. Use the machine's current static address
+                      when a router forward points at it, so the forward still reaches
+                      the machine after the reinstall.
   --recovery-bundle   embed an ENCRYPTED controller bundle plus the homelab-restore
                       tool; after the first login, `sudo homelab-restore` asks for the
                       password and rebuilds keys, vault, inventory and repository.
@@ -30,6 +34,7 @@ Example:
     --name node4 --disk-serial <DISK_SERIAL> \\
     --ssh-key ~/.ssh/homelab-controller.pub \\
     --wifi-ssid MyNet --wifi-psk-hex-file /path/psk.hex \\
+    --wifi-address 192.0.2.35/24 --wifi-gateway 192.0.2.1 --wifi-dns 192.0.2.1 \\
     --recovery-bundle ~/homelab-recovery/homelab-recovery-YYYYMMDD-HHMM.tar.gpg
 """
 
@@ -38,6 +43,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -118,11 +124,19 @@ def render(serial: str, keys: list[str], schema: Path | None, wifi: dict | None,
         # the card is detected). Either failing aborts the whole install - found in a VM
         # test on 2026-11-21. Without a cable the install runs offline from the ISO pool,
         # and the machine joins Wi-Fi on its first boot.
-        wifi_netplan = {"network": {"version": 2, "wifis": {wifi["iface"]: {
-            "dhcp4": True,
-            "dhcp6": False,
-            "access-points": {wifi["ssid"]: {"password": wifi["psk"]}},
-        }}}}
+        iface: dict = {"dhcp4": True, "dhcp6": False}
+        if wifi.get("address"):
+            # The machine's previous static address: a router forward that points at it
+            # keeps working, with no DHCP reservation needed.
+            iface = {
+                "dhcp4": False,
+                "dhcp6": False,
+                "addresses": [wifi["address"]],
+                "routes": [{"to": "default", "via": wifi["gateway"]}],
+                "nameservers": {"addresses": wifi["dns"]},
+            }
+        iface["access-points"] = {wifi["ssid"]: {"password": wifi["psk"]}}
+        wifi_netplan = {"network": {"version": 2, "wifis": {wifi["iface"]: iface}}}
         b64 = base64.b64encode(yaml.safe_dump(wifi_netplan, sort_keys=False).encode()).decode()
         ai["late-commands"] += [
             f"echo {b64} | base64 -d > /target/etc/netplan/60-homelab-wifi.yaml",
@@ -211,6 +225,9 @@ def main() -> None:
     ap.add_argument("--wifi-psk-hex-file", type=Path, help="file holding the 64-hex PSK for --wifi-ssid")
     ap.add_argument("--wifi-iface", default="wlp5s0", help="Wi-Fi interface name (networkd cannot match Wi-Fi by glob)")
     ap.add_argument("--wifi-country", default="BG", help="regulatory domain")
+    ap.add_argument("--wifi-address", help="static IPv4 address/prefix for the Wi-Fi instead of DHCP")
+    ap.add_argument("--wifi-gateway", help="default gateway for --wifi-address")
+    ap.add_argument("--wifi-dns", help="comma-separated DNS servers for --wifi-address")
     ap.add_argument("--recovery-bundle", type=Path, help="ENCRYPTED controller bundle (.tar.gpg) to embed")
     ap.add_argument("--ssh-port", type=int, default=22, help="sshd port on the installed system (default 22)")
     args = ap.parse_args()
@@ -235,6 +252,25 @@ def main() -> None:
         if not IFACE_RE.match(args.wifi_iface):
             die("--wifi-iface looks wrong")
         wifi = {"ssid": args.wifi_ssid, "psk": psk, "iface": args.wifi_iface, "country": args.wifi_country}
+
+    static = (args.wifi_address, args.wifi_gateway, args.wifi_dns)
+    if any(static):
+        if wifi is None or not all(static):
+            die("--wifi-address, --wifi-gateway and --wifi-dns go together, with --wifi-ssid")
+        try:
+            addr = ipaddress.IPv4Interface(args.wifi_address)
+            gw = ipaddress.IPv4Address(args.wifi_gateway)
+            dns = [str(ipaddress.IPv4Address(d.strip())) for d in args.wifi_dns.split(",") if d.strip()]
+        except ValueError as e:
+            die(f"static Wi-Fi settings: {e}")
+        net = addr.network
+        if "/" not in args.wifi_address or net.prefixlen > 30 or addr.ip in (net.network_address, net.broadcast_address):
+            die("--wifi-address must be a host address with its prefix, e.g. 192.168.0.35/24")
+        if gw not in net or gw == addr.ip:
+            die("--wifi-gateway must be another address inside the --wifi-address subnet")
+        if not dns:
+            die("--wifi-dns needs at least one address")
+        wifi.update(address=str(addr), gateway=str(gw), dns=dns)
 
     extra: list[tuple[Path, str]] = []
     if args.recovery_bundle:

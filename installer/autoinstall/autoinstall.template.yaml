@@ -7,10 +7,12 @@
 # it is written to installer/build/, which is git-ignored.
 #
 # Safety, in the order the installer applies it:
-#   1. The stock boot menu has no `autoinstall` kernel argument, so the
-#      installer STOPS before writing anything and asks for confirmation
-#      (subiquity install controller -> NEEDS_CONFIRMATION). Never add that
-#      argument to this image.
+#   1. The stock boot menu has no `autoinstall` kernel argument and `identity`
+#      is an interactive section, so the installer STOPS at the Profile screen
+#      and then at "Confirm destructive action" (default No) before writing
+#      anything (subiquity install controller -> NEEDS_CONFIRMATION). It does
+#      not show "Continue with autoinstall?". Never add that argument to this
+#      image.
 #   2. early-commands aborts unless a disk carrying the expected serial exists.
 #   3. storage.layout.match accepts only that disk. No match -> AutoinstallError
 #      before partitioning. Booting this stick in the wrong machine wipes nothing.

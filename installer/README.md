@@ -24,10 +24,12 @@ purpose (see `docs/PROJECT-CONTEXT.md` §2).
   with `--ssh-port N`, sshd listens on N instead of 22 (plain `ssh.service`, socket
   activation off) — node4 uses 2345 so the router's forward, the owner's remote path,
   keeps working after the reinstall
-- Wired NIC on DHCP (`en*`, optional). With `--wifi-*`: Wi-Fi on DHCP for the installed
-  system, joined on its first boot. Without a cable the install itself runs offline
-  from the stick
-- Security updates applied during install; UTC; no crash-kernel reservation
+- Wired NIC on DHCP (`en*`, optional). With `--wifi-*`: Wi-Fi for the installed system,
+  joined on its first boot, on DHCP or on the static address given with
+  `--wifi-address`/`--wifi-gateway`/`--wifi-dns`. Without a cable the install itself
+  runs offline from the stick
+- Security updates applied during install when a cable gives the installer a network (it
+  never uses the Wi-Fi); UTC; no crash-kernel reservation
 - Suspend/hibernate masked and lid switch ignored, so laptop hardware stays reachable
   until Ansible takes over
 - With `--recovery-bundle`: the encrypted controller bundle and `homelab-restore`
@@ -60,6 +62,16 @@ already in the image) instead of `iw`.
 (installed offline from the ISO's pool), otherwise the installed system could not join
 Wi-Fi at first boot. Only WPA2-PSK; a WPA3-only (SAE) network needs the passphrase.
 
+**Keep the address the machine had.** The laptop's address was static, set in
+NetworkManager rather than reserved on the router, and the router's 2345 forward points
+at it. A DHCP install would most likely come up on another address: the install
+succeeds and the owner's only remote path is gone. So node4's stick pins the same
+address, gateway and DNS servers. Read them on the running machine before a rebuild:
+
+~~~bash
+nmcli -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns connection show "<SSID>"
+~~~
+
 ## Recovery bundle → "install and everything is there"
 
 `--recovery-bundle` embeds an **encrypted** bundle from `scripts/make-recovery-bundle.sh`
@@ -84,8 +96,11 @@ Not installed here: Docker, WireGuard, firewall, any service. That is Ansible's 
 
 ## Safety design — booting the stick in the wrong machine wipes nothing
 
-1. The stock boot menu has no `autoinstall` kernel argument, so the installer **stops and
-   asks for confirmation** before it writes anything. Never add that argument.
+1. The stock boot menu has no `autoinstall` kernel argument, and the config keeps
+   `identity` interactive, so the installer shows the *Profile configuration* screen and
+   then a **"Confirm destructive action"** dialog (default **No**) before it writes
+   anything. It never asks "Continue with autoinstall?": that prompt belongs to a fully
+   non-interactive autoinstall. Never add the argument.
 2. `early-commands` aborts unless a disk with the expected serial is present.
 3. `storage.layout.match` accepts only that serial. No match → `AutoinstallError`
    before partitioning.
@@ -123,6 +138,7 @@ scripts/build-installer-iso.py \
   --ssh-key ~/.ssh/homelab-controller.pub --ssh-key ~/.ssh/<admin-pc>.pub \
   --ssh-port 2345 \
   --wifi-ssid "<SSID>" --wifi-psk-hex-file psk.hex \
+  --wifi-address <LAN-IP>/24 --wifi-gateway <router-IP> --wifi-dns <dns>[,<dns>] \
   --recovery-bundle ~/homelab-recovery/homelab-recovery-YYYYMMDD-HHMM.tar.gpg
 ```
 
@@ -143,12 +159,21 @@ the running root filesystem, and ends with `VERIFIED` after reading the stick ba
 
 ## Install
 
-1. On AC power. Network: the Wi-Fi configured on the stick, or a cable. Laptop BIOS:
-   enable **Power On with AC Attach**.
-2. Boot the stick (ThinkPad: F12) → *Try or Install Ubuntu Server*.
-3. At **"Continue with autoinstall?"** type `yes` — this is the last chance to abort.
-4. Identity screen: username **must equal** `ansible_user` in the inventory; the password
-   must equal the become password in the vault (or update the vault).
+1. On AC power. Network: the Wi-Fi configured on the stick. Have a cable ready, but do
+   not plug it in during the install (the offline install is what was tested): joining the
+   Wi-Fi with the static address is untested on the real hardware, and `homelab-restore`
+   needs the Internet (apt, pip, GitHub), so plug the cable in after the first boot if
+   the Wi-Fi did not come up. In the laptop BIOS enable **Power On with AC Attach**, so
+   the headless server starts again after a power cut; the install itself does not need it.
+2. Boot the stick (ThinkPad: F12, the UEFI entry for the stick). Its boot menu starts
+   *Try or Install Ubuntu Server* by itself after 30 seconds.
+3. **Profile configuration**: *Your servers name* is the node name (`node4`); *Pick a
+   username* **must equal** `ansible_user` in the inventory (`vpetukhov`); the password
+   must equal the become password in the vault (or update the vault); *Your name* is free
+   text. Choose *Done*.
+4. **"Confirm destructive action"**: *Continue* starts the install and wipes the disk with
+   the configured serial; *No*, the default, aborts before anything is written. This is
+   the last chance to abort. There is no `yes` to type.
 5. The machine reboots into the new system. Remove the stick.
 
 ## Validate (from the controller)
@@ -166,17 +191,47 @@ fail2ban playbooks (`docs/PROJECT-CONTEXT.md` §10).
 
 ## After the restore (node4)
 
+Before `sudo homelab-restore` check the network: `ip -4 -br addr show wlp5s0; getent hosts
+github.com pypi.org archive.ubuntu.com` must show the pinned address and three names. The
+restore needs the Internet from step 7 on (`python3-venv` is not on the ISO). If the Wi-Fi
+did not come up, plug in a cable after the first boot; do not plug it in during the install.
+
 1. `sudo homelab-restore`, then `cd ~/Projects/homelab-infrastructure/ansible &&
-   ~/homelab/.venv/bin/ansible homelab -m ping`.
-2. Update `controller_lan_ip` in the inventory if the Wi-Fi lease changed; reserve the
-   Wi-Fi MAC on the router.
-3. Add node4 to the overlay plays (`wg_overlay_ip: 10.44.0.4`), then run `overlay.yml`,
+   ~/homelab/.venv/bin/ansible homelab -m ping`: four pongs. The node4 line is local and
+   always passes, so the three servers are the real test.
+2. `ip -4 -br addr show wlp5s0` must show the pinned address: the inventory's
+   `controller_lan_ip` and the target of the router's 2345 forward. Reserve it for the
+   Wi-Fi MAC on the router as well, so DHCP never hands it to another device.
+3. Check what the restore does not guarantee:
+   - `ls -l ~/Projects/homelab-infrastructure/inventory/hosts.yml ~/.ssh/homelab-controller
+     ~/.homelab_vault_pass`: three files, the two secrets mode 600. If the repository step
+     was interrupted, move `~/Projects/homelab-infrastructure` aside and run the restore
+     again;
+   - `~/.local/bin/claude --version`: the script prints "installed" even when the download
+     failed;
+   - `install -m 600 ~/.homelab_vault_pass ~/.homelab_recovery_pass`: the next
+     `make-recovery-bundle.sh` needs it and the restore does not write it;
+   - `git config --global user.name` and `user.email`: `~/.gitconfig` is not in the bundle,
+     and the repository is public.
+4. If step 7 aborted for lack of network, steps 1 to 6 are done. Once the network works:
+   `sudo apt-get install -y python3-venv && python3 -m venv ~/homelab/.venv &&
+   ~/homelab/.venv/bin/pip install --upgrade pip ansible && sudo touch
+   /var/lib/homelab-restore/restored`.
+5. The install generated new SSH host keys. Compare the fingerprint from `ssh-keygen -lf
+   /etc/ssh/ssh_host_ed25519_key.pub` on the console before you accept it on a client,
+   then run `ssh-keygen -R '[192.168.0.35]:2345'` there. Only the controller and Legion
+   keys are on the stick: add the public key of any other admin machine to
+   `~/.ssh/authorized_keys`.
+6. Add node4 to the overlay plays (`wg_overlay_ip: 10.44.0.4`), then run `overlay.yml`,
    `security.yml`, `fail2ban.yml` and `base.yml` (roadmap M3). Do not talk to
    `10.44.0.x` before `wg1` is up: that range also exists inside the ISP's network.
    Before `security.yml`, make the `firewall` role take the SSH port from `sshd -T`
-   (node4 connects locally and has no `ansible_port`) and keep 2345 reachable from
-   outside until WireGuard remote access exists — otherwise the owner is locked out.
-4. Wipe or re-flash the installer stick.
+   (node4 connects locally and has no `ansible_port`) and give node4 an explicit
+   exception that keeps 2345 reachable from outside until WireGuard remote access exists:
+   the role allows SSH from the LAN only and deletes the any-source rule, so without it
+   the owner is locked out. Apply it with a rollback timer.
+7. Wipe or re-flash the installer stick only after node4 pings all three servers and the
+   bundle has two verified copies that are not on the stick.
 
 ## Recovery and rollback
 
@@ -187,6 +242,7 @@ fail2ban playbooks (`docs/PROJECT-CONTEXT.md` §10).
 
 ## Limitations
 
-- DHCP only — reserve the NIC's MAC on the router so WireGuard endpoints stay stable.
+- Wired NIC: DHCP only — reserve its MAC on the router so WireGuard endpoints stay
+  stable. Wi-Fi: DHCP, or a static IPv4 address with `--wifi-address`.
 - No disk encryption (a headless server cannot type a passphrase at boot).
 - Identity is typed by hand; a typo in the username breaks Ansible until fixed.

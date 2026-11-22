@@ -340,6 +340,20 @@ now written only into the installed system, and the country is set through a
 > **Test an installer in a VM with the real configuration before wiping hardware.**
 > Schema validation and source reading did not catch this. Running it did.
 
+### The stick never asks "Continue with autoinstall?"
+
+The docs and the install plan said the owner would type `yes` at "Continue with
+autoinstall?". That prompt exists only when the autoinstall is fully non-interactive.
+This stick keeps `identity` interactive, so the installer shows the Profile
+configuration screen and then a "Confirm destructive action" dialog whose default is No.
+Typing `yes` into the Profile form would only have corrupted it. The gate itself works:
+nothing is written before Continue. A read-only boot of the final image in a UEFI VM on
+2026-11-22 showed the dialog. The earlier VM test booted the kernel directly with the
+`autoinstall` argument, so it never saw the boot menu or the dialog.
+
+> **A test that skips the boot menu does not test the boot path.** Boot the artefact the
+> way the owner will.
+
 ### A secret printed to a terminal ends up wherever the terminal is copied
 
 The first `vault operator init` was pasted, output and all, into a chat on 2026-11-21 —
@@ -355,6 +369,10 @@ it down, run `clear`, and reply with "done" only.
   because Ansible reused an already-verified SSH master; test with `ControlMaster=no`.
 - **netplan/networkd cannot match Wi-Fi by glob** (name the interface), and the Ubuntu
   Server image does not ship `wpasupplicant` (it is in the ISO's offline pool).
+- **The laptop's address was static in NetworkManager, not reserved on the router.**
+  The router's 2345 forward points at it, so a DHCP reinstall would have succeeded and
+  cut the owner's only remote path. Before rebuilding a machine that something points
+  at, read `nmcli -f ipv4.method,ipv4.addresses …`; node4's stick pins the address.
 - **`gitea dump` aborts on an instance with no repositories yet**
   (`open /data/git/repositories`); create the directory first.
 
@@ -450,7 +468,7 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **Laptop reinstall as node4** | Ready since 2026-11-21: homelab password set, bundle rebuilt, stick written and read back (Wi-Fi, SSH kept on 2345 so the router's forward — the owner's only remote path — keeps working, bundle + `homelab-restore`). Waiting on the owner: copy the bundle off the laptop, save personal data, install (username `vpetukhov`, the current sudo password), then `sudo homelab-restore`. |
+| **Laptop reinstall as node4** | Ready since 2026-11-21: homelab password set, bundle rebuilt, stick written and read back (Wi-Fi pinned to the laptop's old static address and SSH kept on 2345, so the router's forward — the owner's only remote path — keeps working; bundle + `homelab-restore`). Waiting on the owner: copy the bundle off the laptop, save personal data, install (username `vpetukhov`, the current sudo password), then `sudo homelab-restore`. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | Planned on node4. |
