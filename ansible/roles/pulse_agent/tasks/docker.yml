@@ -45,6 +45,17 @@
           - pulse_agent_docker_cli.stat.executable | default(false)
         fail_msg: Install the Docker CLI before enabling the Pulse Docker probe.
 
+    - name: Check curl for the local Docker stats request
+      ansible.builtin.stat:
+        path: /usr/bin/curl
+      register: pulse_agent_docker_curl
+
+    - name: Require curl from the Docker role prerequisites
+      ansible.builtin.assert:
+        that:
+          - pulse_agent_docker_curl.stat.executable | default(false)
+        fail_msg: Install curl before enabling the Pulse Docker probe.
+
     - name: Create the restricted producer account
       ansible.builtin.user:
         name: pulse-docker

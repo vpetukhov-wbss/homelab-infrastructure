@@ -107,13 +107,15 @@ Set `gitea_health_url` under `[agent]` or `pulse_agent_gitea_health_url` in priv
 
 Gitea can respond with HTTP 424 and still provide valid readings that identify an unhealthy dependency. A connection failure or a response without both Gitea checks is `unavailable`. The probe uses a one-second socket timeout and accepts up to 8 KiB of JSON. The periodic host cycle reuses an observation for 30 seconds, keeping its original UTC timestamp. The `sample` command probes directly. Gitea Actions queue, run durations and runner status are separate measurements.
 
-## Docker workload metadata
+## Docker workloads
 
-Set `pulse_agent_docker_containers` in private Ansible inventory to a mapping of up to eight approved aliases to exact Docker container names. For example, map `worker` to `demo-worker`. The role uses the installed Docker CLI and schedules `pulse-docker.timer` every 60 seconds. Each read has a two-second timeout.
+Set `pulse_agent_docker_containers` in private Ansible inventory to a mapping of up to eight approved aliases to exact Docker container names. For example, map `worker` to `demo-worker`. The role uses the Docker CLI and curl installed by the Docker role. It schedules `pulse-docker.timer` every 60 seconds. Each inspect has a two-second timeout. Each non-streaming stats transfer has a three-second deadline, with 50 seconds for the full service cycle.
 
-Only the separate `pulse-docker.service` gets the Docker supplementary group while running. Treat that group as privileged. The service uses a fixed local Unix socket and a fixed `docker container inspect` command template. The main agent has the socket hidden and reads only group-readable snapshots. Container names, inspect output, environment variables and health messages stay out of the snapshots and the telemetry.
+Only the separate `pulse-docker.service` gets the Docker supplementary group while running. Treat that group as privileged. The service uses a fixed local Unix socket for container inspect and a stats GET for each selected running container. The main agent has the socket hidden and reads only group-readable snapshots. Container names and IDs, raw Docker responses, environment variables and health messages stay out of the snapshots and the telemetry.
 
 `dockerWorkloads` reports container state, health when Docker reports one, the container's restart counter and policy, and configured CPU and memory limits where present. The restart counter belongs to the current container instance. Limits describe configuration.
+
+The optional `usage` object carries measured CPU usage and memory for the snapshot's UTC observation time. One core means 100% of a logical CPU. CPU uses Docker's current and previous counters and the host CPU count. Missing or reset counters omit the CPU field. For memory, the collector subtracts inactive file cache when available and valid, using `total_inactive_file` on cgroup v1 and `inactive_file` on cgroup v2. It uses raw cgroup usage when the cache counter is unavailable. A failed stats probe marks `usage` unavailable while retaining container metadata. Stopped containers omit `usage`.
 
 Set `pulse_agent_docker_volumes` in private inventory to up to 16 public-safe aliases mapped to distinct exact named volumes. The existing Docker probe adds `volumeAttachments` to each inspected workload. It reports `ro`, `rw`, or `mixed` when one workload has both modes for an approved volume. An empty map means the workload has no approved volume attachments. A stopped container can still have configured attachments. Original names, mount paths and bind mounts stay out of telemetry. Volume size and backing filesystem capacity are separate measurements.
 
@@ -140,7 +142,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_filesystems`, `pulse_agent_interfaces`, `pulse_agent_temperatures` and `pulse_agent_fans` map approved aliases to host resources.
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
-- `pulse_agent_docker_containers` enables the separate Docker metadata producer.
+- `pulse_agent_docker_containers` enables the separate Docker workload producer.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 - `pulse_agent_gitea_health_url` enables probes against the existing private Gitea health endpoint.
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
@@ -152,4 +154,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, Docker workload metadata, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker usage and volumes, and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, Docker workload metrics and attachments, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker volume capacity, and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

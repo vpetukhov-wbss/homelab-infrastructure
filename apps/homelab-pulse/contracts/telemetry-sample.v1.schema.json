@@ -114,6 +114,7 @@
         "restartPolicy": { "enum": ["no", "always", "on-failure", "unless-stopped"] },
         "memoryLimitBytes": { "type": "integer", "minimum": 1 },
         "cpuLimitCores": { "type": "number", "exclusiveMinimum": 0 },
+        "usage": { "$ref": "#/$defs/dockerWorkloadUsage" },
         "volumeAttachments": {
           "type": "object",
           "maxProperties": 16,
@@ -129,6 +130,24 @@
         "then": { "required": ["observedAt"] },
         "propertyNames": { "enum": ["status", "observedAt"] }
       }
+    },
+    "dockerWorkloadUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "cpuUsageCores": { "$ref": "#/$defs/nonnegative" },
+        "memoryUsageBytes": { "$ref": "#/$defs/bytes" }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": {
+        "anyOf": [
+          { "required": ["cpuUsageCores"] },
+          { "required": ["memoryUsageBytes"] }
+        ]
+      },
+      "else": { "maxProperties": 1 }
     },
     "giteaReading": {
       "type": "object",

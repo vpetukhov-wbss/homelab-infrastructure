@@ -34,7 +34,22 @@ def metrics(data: dict) -> dict[str, object]:
             alias: mode for alias, mode in attachments.items()
             if ALIAS.fullmatch(alias) and mode in ("ro", "rw", "mixed")
         }
+    usage = data.get("usage")
+    if isinstance(usage, dict) and usage.get("status") in ("available", "unavailable"):
+        values = usage_metrics(usage) if usage["status"] == "available" else {}
+        selected["usage"] = {"status": "available" if values else "unavailable", **values}
     return selected
+
+
+def usage_metrics(data: dict) -> dict[str, object]:
+    values = {}
+    cpu = data.get("cpuUsageCores")
+    if type(cpu) in (int, float) and 0 <= cpu <= MAX_INTEGER:
+        values["cpuUsageCores"] = cpu
+    memory = data.get("memoryUsageBytes")
+    if type(memory) is int and 0 <= memory <= MAX_INTEGER:
+        values["memoryUsageBytes"] = memory
+    return values
 
 
 def collect(paths: dict[str, str]) -> dict[str, dict[str, object]]:

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .collectors import docker
+from .docker_stats import read_usage
 from .snapshots import write_snapshot
 
 ALIAS = docker.ALIAS
@@ -16,7 +17,7 @@ MAX_CONTAINERS = 8
 PROBE_TIMEOUT_SECONDS = 2
 DOCKER = "/usr/bin/docker"
 FORMAT = (
-    '{"name":{{json .Name}},"state":{{json .State.Status}},'
+    '{"name":{{json .Name}},"id":{{json .ID}},"state":{{json .State.Status}},'
     '"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},'
     '"restartCount":{{json .RestartCount}},"restartPolicy":{{json .HostConfig.RestartPolicy.Name}},'
     '"memoryLimitBytes":{{json .HostConfig.Memory}},"nanoCpus":{{json .HostConfig.NanoCPUs}},'
@@ -74,6 +75,8 @@ def _probe(name: str, volumes: dict[str, str] | None = None) -> dict[str, object
         })
         if metrics and volumes and isinstance(data.get("mounts"), list):
             metrics["volumeAttachments"] = _attachments(data["mounts"], volumes)
+        if metrics.get("state") == "running":
+            metrics["usage"] = read_usage(data.get("id"))
         return metrics
     except (OSError, ValueError, RecursionError, subprocess.TimeoutExpired):
         return {}

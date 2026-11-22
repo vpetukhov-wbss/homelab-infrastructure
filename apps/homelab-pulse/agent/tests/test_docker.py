@@ -58,6 +58,7 @@ class DockerProbeTests(unittest.TestCase):
             self.assertEqual(reading, {
                 "status": "available", "observedAt": reading["observedAt"], **METRICS,
                 "volumeAttachments": {"data": "ro", "cache": "mixed"},
+                "usage": {"status": "unavailable"},
             })
             config = root / "agent.ini"
             config.write_text(AGENT_INI + f"[docker_snapshots]\nworker={snapshot}\n")
@@ -147,6 +148,8 @@ class DockerProbeTests(unittest.TestCase):
         report = {**INSPECT, "mounts": [{"name": "other", "rw": True}]}
         with patch.object(docker_probe.subprocess, "run", return_value=response(report)):
             self.assertEqual(docker_probe._probe("internal-demo-worker", {"demo-data": "data"}), {
-                **METRICS, "volumeAttachments": {},
+                **METRICS, "volumeAttachments": {}, "usage": {"status": "unavailable"},
             })
-            self.assertEqual(docker_probe._probe("internal-demo-worker"), METRICS)
+            self.assertEqual(docker_probe._probe("internal-demo-worker"), {
+                **METRICS, "usage": {"status": "unavailable"},
+            })
