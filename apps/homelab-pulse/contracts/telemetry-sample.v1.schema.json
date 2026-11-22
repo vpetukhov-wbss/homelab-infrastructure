@@ -113,7 +113,13 @@
         "restartCount": { "type": "integer", "minimum": 0 },
         "restartPolicy": { "enum": ["no", "always", "on-failure", "unless-stopped"] },
         "memoryLimitBytes": { "type": "integer", "minimum": 1 },
-        "cpuLimitCores": { "type": "number", "exclusiveMinimum": 0 }
+        "cpuLimitCores": { "type": "number", "exclusiveMinimum": 0 },
+        "volumeAttachments": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": { "$ref": "#/$defs/alias" },
+          "additionalProperties": { "enum": ["ro", "rw", "mixed"] }
+        }
       },
       "if": { "properties": { "status": { "const": "available" } } },
       "then": { "required": ["observedAt", "state", "restartCount", "restartPolicy"] },

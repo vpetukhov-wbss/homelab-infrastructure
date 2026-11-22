@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,6 +9,8 @@ RESTART_POLICIES = ("no", "always", "on-failure", "unless-stopped")
 FRESH_SECONDS = 180
 MAX_SNAPSHOT_CHARS = 2048
 MAX_INTEGER = (1 << 63) - 1
+MAX_VOLUMES = 16
+ALIAS = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 
 
 def metrics(data: dict) -> dict[str, object]:
@@ -25,6 +28,12 @@ def metrics(data: dict) -> dict[str, object]:
     cores = data.get("cpuLimitCores")
     if type(cores) in (int, float) and 0 < cores <= MAX_INTEGER:
         selected["cpuLimitCores"] = cores
+    attachments = data.get("volumeAttachments")
+    if isinstance(attachments, dict) and len(attachments) <= MAX_VOLUMES:
+        selected["volumeAttachments"] = {
+            alias: mode for alias, mode in attachments.items()
+            if ALIAS.fullmatch(alias) and mode in ("ro", "rw", "mixed")
+        }
     return selected
 
 

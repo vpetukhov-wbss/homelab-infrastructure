@@ -113,7 +113,9 @@ Set `pulse_agent_docker_containers` in private Ansible inventory to a mapping of
 
 Only the separate `pulse-docker.service` gets the Docker supplementary group while running. Treat that group as privileged. The service uses a fixed local Unix socket and a fixed `docker container inspect` command template. The main agent has the socket hidden and reads only group-readable snapshots. Container names, inspect output, environment variables and health messages stay out of the snapshots and the telemetry.
 
-`dockerWorkloads` reports container state, health when Docker reports one, the container's restart counter and policy, and configured CPU and memory limits where present. The restart counter belongs to the current container instance. Limits describe configuration. Live resource use and volume measurements require separate collectors.
+`dockerWorkloads` reports container state, health when Docker reports one, the container's restart counter and policy, and configured CPU and memory limits where present. The restart counter belongs to the current container instance. Limits describe configuration.
+
+Set `pulse_agent_docker_volumes` in private inventory to up to 16 public-safe aliases mapped to distinct exact named volumes. The existing Docker probe adds `volumeAttachments` to each inspected workload. It reports `ro`, `rw`, or `mixed` when one workload has both modes for an approved volume. An empty map means the workload has no approved volume attachments. A stopped container can still have configured attachments. Original names, mount paths and bind mounts stay out of telemetry. Volume size and backing filesystem capacity are separate measurements.
 
 An unsuccessful inspect records `unavailable`. A snapshot over three minutes old reports `stale` with its original observation time. The `sample` command can read normalized files via `[docker_snapshots]`, mapping each alias to an absolute path. Clear the inventory mapping to disable managed polling.
 

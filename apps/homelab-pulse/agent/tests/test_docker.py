@@ -34,12 +34,20 @@ class DockerProbeTests(unittest.TestCase):
     def test_managed_producer_feeds_sanitized_snapshots_through_tick_and_outbox(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            with patch.object(docker_probe.subprocess, "run", return_value=response(INSPECT)) as run:
-                docker_probe.refresh({"worker": "internal-demo-worker"}, root)
+            inspect = {**INSPECT, "mounts": [
+                {"name": "demo-data", "rw": False},
+                {"name": "demo-cache", "rw": True},
+                {"name": "demo-cache", "rw": False},
+                {"name": "unapproved", "rw": True, "source": "/demo/private"},
+            ]}
+            with patch.object(docker_probe.subprocess, "run", return_value=response(inspect)) as run:
+                docker_probe.refresh(
+                    {"worker": "internal-demo-worker"}, root, volumes={"data": "demo-data", "cache": "demo-cache"},
+                )
             argv = run.call_args.args[0]
             self.assertEqual(argv, [
                 "/usr/bin/docker", "--host=unix:///run/docker.sock", "container",
-                "inspect", "--format", docker_probe.FORMAT, "--", "internal-demo-worker",
+                "inspect", "--format", docker_probe.VOLUME_FORMAT, "--", "internal-demo-worker",
             ])
             self.assertEqual(run.call_args.kwargs["timeout"], 2)
             self.assertEqual(run.call_args.kwargs["stderr"], subprocess.DEVNULL)
@@ -47,7 +55,10 @@ class DockerProbeTests(unittest.TestCase):
             snapshot = root / "worker.json"
             self.assertEqual(stat.S_IMODE(snapshot.stat().st_mode), 0o640)
             reading = json.loads(snapshot.read_text())
-            self.assertEqual(reading, {"status": "available", "observedAt": reading["observedAt"], **METRICS})
+            self.assertEqual(reading, {
+                "status": "available", "observedAt": reading["observedAt"], **METRICS,
+                "volumeAttachments": {"data": "ro", "cache": "mixed"},
+            })
             config = root / "agent.ini"
             config.write_text(AGENT_INI + f"[docker_snapshots]\nworker={snapshot}\n")
             transport = Mock()
@@ -118,3 +129,24 @@ class DockerProbeTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     docker_probe.refresh(mapping, Path("/fixture"))
                 probe.assert_not_called()
+
+    def test_cli_reads_current_and_legacy_mappings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "config.json"
+            path.write_text(json.dumps({"containers": {"worker": "demo"}, "volumes": {"data": "demo-data"}}))
+            with patch("sys.argv", ["probe", str(path), str(root)]), patch.object(docker_probe, "refresh") as refresh:
+                self.assertEqual(docker_probe.main(), 0)
+                refresh.assert_called_once_with({"worker": "demo"}, root, volumes={"data": "demo-data"})
+                refresh.reset_mock()
+                path.write_text(json.dumps({"containers": "demo"}))
+                self.assertEqual(docker_probe.main(), 0)
+                refresh.assert_called_once_with({"containers": "demo"}, root)
+
+    def test_attachment_field_distinguishes_no_approved_mounts_from_disabled_source(self):
+        report = {**INSPECT, "mounts": [{"name": "other", "rw": True}]}
+        with patch.object(docker_probe.subprocess, "run", return_value=response(report)):
+            self.assertEqual(docker_probe._probe("internal-demo-worker", {"demo-data": "data"}), {
+                **METRICS, "volumeAttachments": {},
+            })
+            self.assertEqual(docker_probe._probe("internal-demo-worker"), METRICS)

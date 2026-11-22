@@ -4,8 +4,13 @@
     that:
       - pulse_agent_docker_containers is mapping
       - pulse_agent_docker_containers | length <= 8
+      - pulse_agent_docker_volumes is mapping
+      - pulse_agent_docker_volumes | length <= 16
+      - >-
+        pulse_agent_docker_containers | length > 0 or
+        pulse_agent_docker_volumes | length == 0
 
-- name: Validate Docker aliases and exact container names
+- name: Validate Docker aliases and exact resource names
   ansible.builtin.assert:
     that:
       - item.key is string and item.key is match('^[a-z][a-z0-9_-]{0,31}\Z')
@@ -13,8 +18,18 @@
         item.value is string and
         item.value is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}\Z')
     quiet: true
-  loop: "{{ pulse_agent_docker_containers | dict2items }}"
+  loop: >-
+    {{ (pulse_agent_docker_containers | dict2items) +
+       (pulse_agent_docker_volumes | dict2items) }}
   no_log: true
+
+- name: Require distinct Docker volume names
+  ansible.builtin.assert:
+    that:
+      - >-
+        pulse_agent_docker_volumes.values() | unique(case_sensitive=true) |
+        length == pulse_agent_docker_volumes | length
+    quiet: true
 
 - name: Install the Docker producer configuration and units
   when: pulse_agent_docker_containers | length > 0
@@ -38,9 +53,11 @@
         create_home: false
         shell: /usr/sbin/nologin
 
-    - name: Write the approved Docker container list
+    - name: Write the approved Docker container and volume lists
       ansible.builtin.copy:
-        content: "{{ pulse_agent_docker_containers | to_nice_json }}\n"
+        content: >-
+          {{ {'containers': pulse_agent_docker_containers,
+              'volumes': pulse_agent_docker_volumes} | to_nice_json }}
         dest: /etc/pulse-agent/docker-containers.json
         owner: root
         group: root
