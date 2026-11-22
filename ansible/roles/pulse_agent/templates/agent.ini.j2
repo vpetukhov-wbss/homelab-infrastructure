@@ -63,3 +63,12 @@ port = {{ pulse_agent_postgres_port }}
 database = {{ pulse_agent_postgres_database }}
 username = {{ pulse_agent_postgres_username }}
 {% endif %}
+
+{% if pulse_agent_rabbitmq_host %}
+[rabbitmq]
+host = {{ pulse_agent_rabbitmq_host }}
+port = {{ pulse_agent_rabbitmq_port }}
+vhost = {{ pulse_agent_rabbitmq_vhost }}
+queue = {{ pulse_agent_rabbitmq_queue }}
+username = {{ pulse_agent_rabbitmq_username }}
+{% endif %}

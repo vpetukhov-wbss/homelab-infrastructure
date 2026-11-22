@@ -18,3 +18,8 @@ pulse_agent_postgres_host: ""
 pulse_agent_postgres_port: 5432
 pulse_agent_postgres_database: postgres
 pulse_agent_postgres_username: pulse-monitor
+pulse_agent_rabbitmq_host: ""
+pulse_agent_rabbitmq_port: 15672
+pulse_agent_rabbitmq_vhost: /
+pulse_agent_rabbitmq_queue: ""
+pulse_agent_rabbitmq_username: pulse-monitor

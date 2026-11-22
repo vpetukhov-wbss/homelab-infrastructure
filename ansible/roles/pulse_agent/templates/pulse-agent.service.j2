@@ -16,10 +16,13 @@ LoadCredential=redis-password:/etc/pulse-agent/redis-password
 {% if pulse_agent_postgres_host %}
 LoadCredential=postgres-pgpass:/etc/pulse-agent/postgres-pgpass
 {% endif %}
+{% if pulse_agent_rabbitmq_host %}
+LoadCredential=rabbitmq-password:/etc/pulse-agent/rabbitmq-password
+{% endif %}
 StateDirectory=pulse-agent
 StateDirectoryMode=0700
 UMask=0077
-TimeoutStartSec={{ '14s' if pulse_agent_postgres_host else '12s' }}
+TimeoutStartSec={{ 12 + (2 if pulse_agent_postgres_host else 0) + (2 if pulse_agent_rabbitmq_host else 0) }}s
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -91,6 +91,16 @@ In Ansible, set `pulse_agent_postgres_host`, `pulse_agent_postgres_port`, `pulse
 
 The agent reports database size, connected backends, recovery state and cumulative commit, rollback, buffer hit, block read and deadlock counters. The probe itself counts as a connection. The collector includes the statistics reset time when PostgreSQL provides one. Use counter deltas and start a new series after a reset. The host cycle reuses an observation for 30 seconds with its original timestamp. The database statement has a one-second timeout and the client process has a two-second limit. Failed probes report `unavailable` while other metrics continue. A manual `sample` command takes a fresh reading.
 
+## RabbitMQ
+
+Enable `[rabbitmq]` to monitor one approved queue per agent on the existing RabbitMQ 3.13 management listener. Set `host` to the management listener's private IP literal, `port` to its HTTP port (default 15672), `vhost` to the exact virtual host name and `queue` to the exact queue name. Use loopback or the encrypted WireGuard overlay because the management request uses HTTP Basic authentication.
+
+Set `username` to a dedicated account with the `management` tag. Grant it access to the selected virtual host with configure, write and read permission patterns all set to `^$`. The [management tag](https://www.rabbitmq.com/docs/3.13/management#access-and-permissions) allows visibility into other queues in that virtual host, so the probe requests only the approved queue using `GET /api/queues/{vhost}/{name}`. It selects total messages, messages ready to deliver, delivered messages awaiting acknowledgement and consumer count. The telemetry contains those counts and the UTC observation time.
+
+For Ansible, set `pulse_agent_rabbitmq_host`, `pulse_agent_rabbitmq_port`, `pulse_agent_rabbitmq_vhost`, `pulse_agent_rabbitmq_queue` and `pulse_agent_rabbitmq_username` in private inventory. Put the password in `vault_pulse_agent_rabbitmq_password` for the `rabbitmq-password` systemd credential. For a local CLI check, set `password_file` in `[rabbitmq]` to an absolute path readable by the caller. Clear the host to disable the probe.
+
+Each probe uses a one-second socket timeout and reads at most 64 KiB of management JSON plus one byte to detect oversized responses. An unreachable broker, failed authentication, missing queue or missing counters yield `unavailable`. Zero indicates a reported zero. The periodic host cycle reuses a reading for 30 seconds with its original timestamp. The `sample` command takes a fresh reading.
+
 ## Delivery
 
 The versioned request format lives in [the shared contract](../contracts/telemetry-sample.v1.schema.json). A `tick` persists a sample in the local outbox and sends it to `POST /internal/v1/telemetry` over the private network. The API associates the bearer credential with the node and returns `204` for a stored or already accepted sample.
@@ -116,9 +126,10 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_sqlite_databases` maps approved aliases to SQLite files visible inside the service.
 - `pulse_agent_redis_host` enables Redis monitoring using the dedicated service credential.
 - `pulse_agent_postgres_host` enables PostgreSQL monitoring using the dedicated libpq password file.
+- `pulse_agent_rabbitmq_host` enables queue monitoring using the dedicated RabbitMQ management credential.
 
 The role uses the host Python interpreter, stores samples in a systemd-managed state directory and loads the bearer token through `LoadCredential=`. The host cycle runs every 15 seconds after the WireGuard and overlay guard units are active. Add nodes to the playbook inventory after the .NET receiver accepts the contract.
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, queue, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker, broker and CI probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics, Docker and Gitea Actions probes are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

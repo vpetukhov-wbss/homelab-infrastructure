@@ -27,6 +27,16 @@ class PostgreSQLSettings:
 
 
 @dataclass(frozen=True)
+class RabbitMQSettings:
+    host: str
+    port: int
+    vhost: str
+    queue: str
+    username: str
+    password_file: Path | None
+
+
+@dataclass(frozen=True)
 class Config:
     ingest_url: str
     state_directory: Path
@@ -44,6 +54,7 @@ class Config:
     sqlite_databases: dict[str, str] = field(default_factory=dict)
     redis: RedisSettings | None = None
     postgresql: PostgreSQLSettings | None = None
+    rabbitmq: RabbitMQSettings | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -88,7 +99,7 @@ class Config:
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
             smart_snapshots, _nginx_status_url(agent.get("nginx_status_url", "")), sqlite_databases,
-            _redis_settings(parser), _postgresql_settings(parser),
+            _redis_settings(parser), _postgresql_settings(parser), _rabbitmq_settings(parser),
         )
 
 
@@ -164,6 +175,32 @@ def _postgresql_settings(parser: configparser.ConfigParser) -> PostgreSQLSetting
     if pgpass_file is not None and not pgpass_file.is_absolute():
         raise ValueError("PostgreSQL pgpass_file must be absolute")
     return PostgreSQLSettings(host, port, database, username, pgpass_file)
+
+
+def _rabbitmq_settings(parser: configparser.ConfigParser) -> RabbitMQSettings | None:
+    if not parser.has_section("rabbitmq"):
+        return None
+    section = parser["rabbitmq"]
+    host = section.get("host", "")
+    if not host:
+        return None
+    if not _private_ip_literal(host):
+        raise ValueError("RabbitMQ requires a private IP literal")
+    port = section.getint("port", fallback=15672)
+    username = section.get("username", "pulse-monitor")
+    if not 1 <= port <= 65535 or not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", username) or username == "guest":
+        raise ValueError("RabbitMQ requires a valid port and a dedicated monitor username")
+    vhost, queue = section.get("vhost", "/"), section.get("queue", "")
+    if any(
+        not name or not name.isprintable() or len(name.encode("utf-8")) > 255 or name in {".", ".."}
+        for name in (vhost, queue)
+    ):
+        raise ValueError("RabbitMQ requires a valid vhost and queue name")
+    path = section.get("password_file")
+    password_file = Path(path) if path else None
+    if password_file is not None and not password_file.is_absolute():
+        raise ValueError("RabbitMQ password_file must be absolute")
+    return RabbitMQSettings(host, port, vhost, queue, username, password_file)
 
 
 def read_token(path: Path | None) -> str:

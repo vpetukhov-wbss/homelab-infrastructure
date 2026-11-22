@@ -82,6 +82,9 @@
         },
         "postgresql": {
           "$ref": "#/$defs/postgresqlReading"
+        },
+        "rabbitmq": {
+          "$ref": "#/$defs/rabbitmqReading"
         }
       }
     }
@@ -90,6 +93,22 @@
     "alias": { "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "bytes": { "type": "integer", "minimum": 0 },
     "nonnegative": { "type": "number", "minimum": 0 },
+    "rabbitmqReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "messages": { "type": "integer", "minimum": 0 },
+        "messagesReady": { "type": "integer", "minimum": 0 },
+        "messagesUnacknowledged": { "type": "integer", "minimum": 0 },
+        "consumers": { "type": "integer", "minimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": { "required": ["messages", "messagesReady", "messagesUnacknowledged", "consumers"] },
+      "else": { "maxProperties": 2 }
+    },
     "postgresqlReading": {
       "type": "object",
       "additionalProperties": false,

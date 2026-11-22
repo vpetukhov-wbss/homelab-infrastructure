@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import nginx, postgresql, redis_info, smart, sqlite_storage
+from . import nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -63,6 +63,8 @@ def collect(
         values["redis"] = redis_info.collect(config.redis, config.state_directory if use_cache else None)
     if config.postgresql:
         values["postgresql"] = postgresql.collect(config.postgresql, config.state_directory if use_cache else None)
+    if config.rabbitmq:
+        values["rabbitmq"] = rabbitmq.collect(config.rabbitmq, config.state_directory if use_cache else None)
     return values
 
 

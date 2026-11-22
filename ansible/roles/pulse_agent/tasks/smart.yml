@@ -8,8 +8,11 @@
   ansible.builtin.assert:
     that:
       - item.key is string and item.key is match('^[a-z][a-z0-9_-]{0,31}\Z')
-      - item.value is string and item.value is match('^(sd[a-z]+|nvme[0-9]+n[0-9]+)\Z')
-    fail_msg: Configure a public alias and the basename of a direct SATA or NVMe disk.
+      - >-
+        item.value is string and
+        item.value is match('^(sd[a-z]+|nvme[0-9]+n[0-9]+)\Z')
+    fail_msg: >-
+      Configure a public alias and the basename of a direct SATA or NVMe disk.
     quiet: true
   loop: "{{ pulse_agent_smart_devices | dict2items }}"
 
@@ -25,7 +28,9 @@
       ansible.builtin.assert:
         that:
           - pulse_agent_smartctl.stat.executable | default(false)
-        fail_msg: Install smartmontools on the host before enabling the Pulse SMART producer.
+        fail_msg: >-
+          Install smartmontools on the host before enabling
+          the Pulse SMART producer.
 
     - name: Write the root-owned SMART device list
       ansible.builtin.copy:
