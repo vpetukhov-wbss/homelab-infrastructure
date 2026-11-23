@@ -13,6 +13,10 @@ pulse_agent_docker_containers: {}
 pulse_agent_docker_volumes: {}
 pulse_agent_docker_volume_paths: {}
 pulse_agent_nginx_status_url: ""
+pulse_agent_tls_host: ""
+pulse_agent_tls_port: 443
+pulse_agent_tls_server_name: ""
+pulse_agent_tls_ca_file: ""
 pulse_agent_gitea_health_url: ""
 pulse_agent_gitea_actions_db: ""
 pulse_agent_sqlite_databases: {}

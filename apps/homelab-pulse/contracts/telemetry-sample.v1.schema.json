@@ -79,6 +79,9 @@
           "propertyNames": { "$ref": "#/$defs/alias" },
           "additionalProperties": { "$ref": "#/$defs/dockerVolumeReading" }
         },
+        "tls": {
+          "$ref": "#/$defs/tlsReading"
+        },
         "nginx": {
           "$ref": "#/$defs/nginxReading"
         },
@@ -314,6 +317,19 @@
       "then": {
         "required": ["databaseBytes", "walBytes", "sharedMemoryBytes", "rollbackJournalBytes", "totalBytes"]
       },
+      "else": { "maxProperties": 2 }
+    },
+    "tlsReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "expiresAt": { "type": "string", "format": "date-time", "pattern": "Z$" }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": { "required": ["expiresAt"] },
       "else": { "maxProperties": 2 }
     },
     "nginxReading": {

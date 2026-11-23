@@ -61,6 +61,12 @@ Set `nginx_status_url` under `[agent]` or `pulse_agent_nginx_status_url` in priv
 
 The host cycle records active, reading, writing and waiting connections along with cumulative accepted connections, handled connections and requests. Each reading includes its own UTC observation time. Connection errors, timeouts, unexpected HTTP responses and malformed bodies report `unavailable` while host metrics continue. The socket timeout is one second and the response is limited to 1 KiB. With an empty URL, the agent omits this collector.
 
+### TLS certificate expiry
+
+Enable the optional `[tls]` section with a loopback or private IP literal as `host` and a `port` (443 by default). Set `server_name` to the certificate's DNS name when the listener selects certificates by SNI. With no name, the certificate must match the IP address. The default system trust store is used unless `ca_file` points to a readable absolute path to a PEM trust bundle. For systemd, keep that public CA bundle outside home directories and grant the unprivileged agent read access.
+
+Point this check at the listener that terminates TLS. In this repository, application NGINX serves private HTTP and the edge role currently leaves HTTPS disabled. Enable the metric only for an existing HTTPS listener. The agent performs only a TLS handshake and verifies trust, validity dates, and the configured identity. It emits `expiresAt` in UTC with `observedAt` or reports `unavailable` for connection and certificate errors. The payload excludes the endpoint address, hostname and certificate. The network deadline is two seconds. On the normal host cycle, the probe caches readings for 30 seconds with their original timestamps. The `sample` command checks directly.
+
 ## SQLite storage
 
 Map each approved database alias to its absolute path in `[sqlite_databases]`, or set `pulse_agent_sqlite_databases` in private Ansible inventory. The normal host cycle records the logical size of the database, WAL, shared-memory index and rollback journal in bytes, along with their sum and a UTC timestamp. Absent sidecars count as zero. Since SQLite can create or delete these files during a write or checkpoint, sizes are a point-in-time estimate. Missing or inaccessible databases and non-regular files report `unavailable` independently of other metrics.
@@ -155,6 +161,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_disks` maps approved inventory aliases to block device names on each host. On a deployed node, pass `--config /etc/pulse-agent/agent.ini` to `inventory` to use the rendered mapping.
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 - `pulse_agent_docker_containers` enables the separate Docker workload producer.
+- `pulse_agent_tls_host` enables the TLS expiry probe. `pulse_agent_tls_port`, `pulse_agent_tls_server_name` and `pulse_agent_tls_ca_file` are optional.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 - `pulse_agent_gitea_actions_db` enables local read-only Actions and runner metrics.
 - `pulse_agent_gitea_health_url` enables probes against the existing private Gitea health endpoint.
@@ -167,4 +174,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health and Actions, the local outbox, HTTP transport and deployment templates. NGINX access-log and TLS metrics are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health and Actions, the local outbox, HTTP transport and deployment templates. NGINX access-log metrics are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.

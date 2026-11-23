@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import docker, gitea, gitea_actions, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage
+from . import docker, gitea, gitea_actions, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage, tls_endpoint
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -59,6 +59,8 @@ def collect(
         values["dockerWorkloads"] = docker.collect(config.docker_snapshots)
     if config.docker_volume_snapshots:
         values["dockerVolumes"] = docker.collect_volumes(config.docker_volume_snapshots)
+    if config.tls:
+        values["tls"] = tls_endpoint.collect(config.tls, config.state_directory if use_cache else None)
     if config.nginx_status_url:
         values["nginx"] = nginx.collect(config.nginx_status_url)
     if config.sqlite_databases:

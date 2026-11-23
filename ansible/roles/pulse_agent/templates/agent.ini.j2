@@ -15,6 +15,14 @@ gitea_actions_snapshot = /run/pulse-actions/actions.json
 gitea_health_url = {{ pulse_agent_gitea_health_url }}
 {% endif %}
 
+{% if pulse_agent_tls_host %}
+[tls]
+host = {{ pulse_agent_tls_host }}
+port = {{ pulse_agent_tls_port }}
+server_name = {{ pulse_agent_tls_server_name }}
+ca_file = {{ pulse_agent_tls_ca_file }}
+
+{% endif %}
 [filesystems]
 {% for alias, path in pulse_agent_filesystems | dictsort %}
 {{ alias }} = {{ path }}

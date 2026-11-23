@@ -37,6 +37,14 @@ class RabbitMQSettings:
 
 
 @dataclass(frozen=True)
+class TLSSettings:
+    host: str
+    port: int
+    server_name: str
+    ca_file: Path | None
+
+
+@dataclass(frozen=True)
 class Config:
     ingest_url: str
     state_directory: Path
@@ -59,6 +67,7 @@ class Config:
     docker_snapshots: dict[str, str] = field(default_factory=dict)
     docker_volume_snapshots: dict[str, str] = field(default_factory=dict)
     gitea_actions_snapshot: str | None = None
+    tls: TLSSettings | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -112,7 +121,7 @@ class Config:
             smart_snapshots, _private_probe_url(agent.get("nginx_status_url", ""), "NGINX status"), sqlite_databases,
             _redis_settings(parser), _postgresql_settings(parser), _rabbitmq_settings(parser),
             _private_probe_url(agent.get("gitea_health_url", ""), "Gitea health", suffix="/api/healthz"),
-            docker_snapshots, docker_volume_snapshots, actions_snapshot,
+            docker_snapshots, docker_volume_snapshots, actions_snapshot, _tls_settings(parser),
         )
 
 
@@ -144,6 +153,28 @@ def _private_ip_literal(value: str) -> bool:
     except ValueError:
         return False
     return address.is_loopback or any(address in network for network in PRIVATE_MONITORING_NETWORKS)
+
+
+def _tls_settings(parser: configparser.ConfigParser) -> TLSSettings | None:
+    if not parser.has_section("tls") or not parser["tls"].get("host"):
+        return None
+    section = parser["tls"]
+    host = section["host"]
+    if "%" in host or not _private_ip_literal(host):
+        raise ValueError("TLS monitoring requires an unscoped private IP literal")
+    port = section.getint("port", fallback=443)
+    if not 1 <= port <= 65535:
+        raise ValueError("Invalid TLS monitoring port")
+    server_name = section.get("server_name") or host
+    if server_name != host:
+        label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+        if len(server_name) > 253 or not re.fullmatch(rf"{label}(?:\.{label})*", server_name):
+            raise ValueError("Invalid TLS certificate DNS name")
+    path = section.get("ca_file")
+    ca_file = Path(path) if path else None
+    if ca_file and not ca_file.is_absolute():
+        raise ValueError("TLS CA file path must be absolute")
+    return TLSSettings(host, port, server_name, ca_file)
 
 
 def _redis_settings(parser: configparser.ConfigParser) -> RedisSettings | None:
