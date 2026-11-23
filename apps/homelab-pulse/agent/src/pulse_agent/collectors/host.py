@@ -3,7 +3,9 @@ import os
 from pathlib import Path
 
 from ..config import Config
-from . import docker, gitea, gitea_actions, nginx, postgresql, rabbitmq, redis_info, smart, sqlite_storage, tls_endpoint
+from . import (
+    docker, gitea, gitea_actions, nginx, nginx_access, postgresql, rabbitmq, redis_info, smart, sqlite_storage, tls_endpoint,
+)
 
 LOG = logging.getLogger(__name__)
 CPU_NAMES = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
@@ -63,6 +65,9 @@ def collect(
         values["tls"] = tls_endpoint.collect(config.tls, config.state_directory if use_cache else None)
     if config.nginx_status_url:
         values["nginx"] = nginx.collect(config.nginx_status_url)
+    if config.nginx_access_log:
+        cache_dir = config.state_directory if use_cache else None
+        values["nginxAccess"] = nginx_access.collect(config.nginx_access_log, cache_dir)
     if config.sqlite_databases:
         values["sqliteStorage"] = sqlite_storage.collect(config.sqlite_databases)
     if config.redis:

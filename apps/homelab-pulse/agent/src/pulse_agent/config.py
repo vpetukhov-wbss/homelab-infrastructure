@@ -68,6 +68,7 @@ class Config:
     docker_volume_snapshots: dict[str, str] = field(default_factory=dict)
     gitea_actions_snapshot: str | None = None
     tls: TLSSettings | None = None
+    nginx_access_log: Path | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -115,13 +116,18 @@ class Config:
         if not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name) for name in disks.values()):
             raise ValueError("Invalid block device name")
 
+        access_log = agent.get("nginx_access_log")
+        nginx_access_log = Path(access_log) if access_log else None
+        if nginx_access_log and not nginx_access_log.is_absolute():
+            raise ValueError("NGINX access log path must be absolute")
+
         return cls(
             agent["ingest_url"], path.parent / agent.get("state_directory", "./data/pulse-agent"),
             timeout, max_pending, max_age, send_limit, filesystems, network, temperatures, disks, fans,
             smart_snapshots, _private_probe_url(agent.get("nginx_status_url", ""), "NGINX status"), sqlite_databases,
             _redis_settings(parser), _postgresql_settings(parser), _rabbitmq_settings(parser),
             _private_probe_url(agent.get("gitea_health_url", ""), "Gitea health", suffix="/api/healthz"),
-            docker_snapshots, docker_volume_snapshots, actions_snapshot, _tls_settings(parser),
+            docker_snapshots, docker_volume_snapshots, actions_snapshot, _tls_settings(parser), nginx_access_log,
         )
 
 

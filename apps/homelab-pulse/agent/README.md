@@ -61,6 +61,14 @@ Set `nginx_status_url` under `[agent]` or `pulse_agent_nginx_status_url` in priv
 
 The host cycle records active, reading, writing and waiting connections along with cumulative accepted connections, handled connections and requests. Each reading includes its own UTC observation time. Connection errors, timeouts, unexpected HTTP responses and malformed bodies report `unavailable` while host metrics continue. The socket timeout is one second and the response is limited to 1 KiB. With an empty URL, the agent omits this collector.
 
+### NGINX access log
+
+Set `nginx_access_log` under `[agent]` or `pulse_agent_nginx_access_log` in private inventory to an absolute path to an existing regular local file. The collector understands the repository's NGINX `main` log format with default escaping. On the containerized app host, NGINX emits this log through the container log stream. To use the collector, arrange for the approved stream to be written as plain NGINX lines to a private regular file. Grant `pulse-agent` read access only to that file and traversal to its directory, including after rotation. Docker socket access is unnecessary. The role leaves the source disabled until a file is configured.
+
+The collector reads up to 256 KiB from the current file and counts logged requests and HTTP 5xx in the preceding five minutes using the logged timestamps. It discards partial lines and ignores unrecognized records. The counts cover only the active file when logs rotate. A byte limit that cuts off older data sets `tailTruncated`. Missing, unreadable, non-regular or unrecognized files report `unavailable`. The periodic agent refreshes the reading every 30 seconds and preserves its observation time between refreshes.
+
+For latency, the collector accepts the same log format with the literal suffix ` rt=$request_time` appended to the format, after the user agent field. The current infrastructure template has no timing suffix. When every included request carries a valid duration and the tail is complete, the collector reports the nearest-rank p95 in milliseconds. Telemetry never includes log lines, file paths, client addresses, URLs or headers. See the [NGINX log module](https://nginx.org/en/docs/http/ngx_http_log_module.html) for `$request_time`.
+
 ### TLS certificate expiry
 
 Enable the optional `[tls]` section with a loopback or private IP literal as `host` and a `port` (443 by default). Set `server_name` to the certificate's DNS name when the listener selects certificates by SNI. With no name, the certificate must match the IP address. The default system trust store is used unless `ca_file` points to a readable absolute path to a PEM trust bundle. For systemd, keep that public CA bundle outside home directories and grant the unprivileged agent read access.
@@ -162,6 +170,7 @@ The repository contains an opt-in `ansible/playbooks/pulse-agent.yml` that targe
 - `pulse_agent_smart_devices` enables managed SMART polling for the listed disks. `pulse_agent_smart_snapshots` maps additional external SMART snapshots.
 - `pulse_agent_docker_containers` enables the separate Docker workload producer.
 - `pulse_agent_tls_host` enables the TLS expiry probe. `pulse_agent_tls_port`, `pulse_agent_tls_server_name` and `pulse_agent_tls_ca_file` are optional.
+- `pulse_agent_nginx_access_log` enables aggregate request and error metrics from a local log file.
 - `pulse_agent_nginx_status_url` enables probes against an existing private NGINX status endpoint.
 - `pulse_agent_gitea_actions_db` enables local read-only Actions and runner metrics.
 - `pulse_agent_gitea_health_url` enables probes against the existing private Gitea health endpoint.
@@ -174,4 +183,4 @@ The role uses the host Python interpreter, stores samples in a systemd-managed s
 
 ## Scope
 
-The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health and Actions, the local outbox, HTTP transport and deployment templates. NGINX access-log metrics are follow-up work. The .NET receiver owns history, retention, public projection and SignalR.
+The agent covers the fast host cycle, managed SMART polling, Docker workloads and volume storage, NGINX status and access-log aggregates, TLS expiry, SQLite storage, Redis INFO, PostgreSQL statistics, RabbitMQ queue depth, Gitea health and Actions, the local outbox, HTTP transport and deployment templates. The .NET receiver owns history, retention, public projection and SignalR.

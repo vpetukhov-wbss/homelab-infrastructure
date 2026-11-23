@@ -82,6 +82,9 @@
         "tls": {
           "$ref": "#/$defs/tlsReading"
         },
+        "nginxAccess": {
+          "$ref": "#/$defs/nginxAccessReading"
+        },
         "nginx": {
           "$ref": "#/$defs/nginxReading"
         },
@@ -330,6 +333,32 @@
       },
       "if": { "properties": { "status": { "const": "available" } } },
       "then": { "required": ["expiresAt"] },
+      "else": { "maxProperties": 2 }
+    },
+    "nginxAccessReading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable"] },
+        "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "windowSeconds": { "const": 300 },
+        "requests": { "type": "integer", "minimum": 0 },
+        "serverErrors": { "type": "integer", "minimum": 0 },
+        "tailTruncated": { "type": "boolean" },
+        "requestTimeP95Ms": { "type": "integer", "minimum": 0 }
+      },
+      "if": { "properties": { "status": { "const": "available" } } },
+      "then": {
+        "required": ["windowSeconds", "requests", "serverErrors", "tailTruncated"],
+        "if": {
+          "anyOf": [
+            { "properties": { "tailTruncated": { "const": true } } },
+            { "properties": { "requests": { "const": 0 } } }
+          ]
+        },
+        "then": { "not": { "required": ["requestTimeP95Ms"] } }
+      },
       "else": { "maxProperties": 2 }
     },
     "nginxReading": {
