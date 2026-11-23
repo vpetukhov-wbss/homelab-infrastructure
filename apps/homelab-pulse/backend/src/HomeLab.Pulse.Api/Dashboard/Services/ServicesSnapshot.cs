@@ -7,7 +7,12 @@ internal sealed record ServicesSnapshot(int SchemaVersion, DateTimeOffset Genera
 internal sealed record NodeServices(
     string Alias, [property: JsonPropertyName("postgresql")] IReadOnlyList<ServiceReading<PostgreSqlMetrics>> PostgreSql,
     IReadOnlyList<ServiceReading<RedisMetrics>> Redis,
-    [property: JsonPropertyName("rabbitmq")] IReadOnlyList<ServiceReading<RabbitMqMetrics>> RabbitMq, IReadOnlyList<ServiceReading<SqliteMetrics>> Sqlite);
+    [property: JsonPropertyName("rabbitmq")] IReadOnlyList<ServiceReading<RabbitMqMetrics>> RabbitMq, IReadOnlyList<ServiceReading<SqliteMetrics>> Sqlite,
+    IReadOnlyList<ServiceReading<NginxMetrics>> Nginx, IReadOnlyList<ServiceReading<NginxAccessMetrics>> NginxAccess,
+    IReadOnlyList<ServiceReading<TlsMetrics>> Tls, IReadOnlyList<ServiceReading<GiteaMetrics>> Gitea,
+    IReadOnlyList<ServiceReading<GiteaActionsMetrics>> GiteaActions,
+    IReadOnlyList<ServiceReading<DockerWorkloadMetrics>> DockerWorkloads,
+    IReadOnlyList<ServiceReading<DockerVolumeMetrics>> DockerVolumes);
 
 internal sealed record ServiceReading<T>(string Alias, string Status, DateTimeOffset? ObservedAt, T? Metrics) where T : class;
 

@@ -6,6 +6,13 @@ internal enum ServiceKind
     Redis,
     RabbitMq,
     Sqlite,
+    Nginx,
+    NginxAccess,
+    Tls,
+    Gitea,
+    GiteaActions,
+    DockerWorkload,
+    DockerVolume,
 }
 
 internal sealed record ApprovedService(string Alias, ServiceKind Kind, string? CollectorAlias);
@@ -44,11 +51,19 @@ internal sealed class ServiceCatalog
                 "redis" => ServiceKind.Redis,
                 "rabbitmq" => ServiceKind.RabbitMq,
                 "sqlite" => ServiceKind.Sqlite,
+                "nginx" => ServiceKind.Nginx,
+                "nginx-access" => ServiceKind.NginxAccess,
+                "tls" => ServiceKind.Tls,
+                "gitea" => ServiceKind.Gitea,
+                "gitea-actions" => ServiceKind.GiteaActions,
+                "docker-workload" => ServiceKind.DockerWorkload,
+                "docker-volume" => ServiceKind.DockerVolume,
                 _ => throw InvalidCatalog(),
             };
 
             var source = entry["Source"];
-            if ((kind == ServiceKind.Sqlite ? source is null || !PublicCatalog.IsAlias(source) : source is not null)
+            var mappedSource = kind is ServiceKind.Sqlite or ServiceKind.DockerWorkload or ServiceKind.DockerVolume;
+            if ((mappedSource ? source is null || !PublicCatalog.IsAlias(source) : source is not null)
                 || !selected.Add((node.AgentId, kind, source)))
             {
                 throw InvalidCatalog();

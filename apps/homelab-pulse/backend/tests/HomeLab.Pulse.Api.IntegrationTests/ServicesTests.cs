@@ -7,7 +7,7 @@ using Xunit;
 
 namespace HomeLab.Pulse.Api.IntegrationTests;
 
-public sealed class ServicesTests : IDisposable
+public sealed partial class ServicesTests : IDisposable
 {
     private const string PathToServices = "/api/v1/services.json";
     private static readonly DateTimeOffset Now = new(2026, 1, 27, 12, 0, 0, TimeSpan.Zero);
@@ -355,7 +355,7 @@ public sealed class ServicesTests : IDisposable
     };
 
     private static string Sample(DateTimeOffset envelope, object? postgres = null, object? redis = null, object? rabbit = null,
-        object? sqlite = null, Guid? id = null, Guid? boot = null)
+        object? sqlite = null, Guid? id = null, Guid? boot = null, IReadOnlyDictionary<string, object>? additional = null)
     {
         var values = new Dictionary<string, object>(StringComparer.Ordinal)
         {
@@ -371,6 +371,14 @@ public sealed class ServicesTests : IDisposable
         foreach (var (name, reading) in new[] { ("postgresql", postgres), ("redis", redis), ("rabbitmq", rabbit), ("sqliteStorage", sqlite) })
         {
             if (reading is not null)
+            {
+                values.Add(name, reading);
+            }
+        }
+
+        if (additional is not null)
+        {
+            foreach (var (name, reading) in additional)
             {
                 values.Add(name, reading);
             }
