@@ -1,7 +1,7 @@
 # HomeLab Pulse receiver
 
 This ASP.NET Core 10 receiver accepts telemetry from the Python agent and stores it
-in SQLite. It is the first backend slice, with no deployment configuration.
+in SQLite and serves an allowlisted dashboard overview.
 
 ## Local development
 
@@ -87,3 +87,46 @@ undone batches for the next pass. The worker logs counts and SQLite error codes.
 The lower bound matches the ingest replay window. Each sweep processes at most
 128 batches, so a large backlog can take multiple hours. SQLite reuses storage
 freed by ordinary deletes. The database file can retain its high-water size.
+
+## Dashboard overview
+
+`GET /api/v1/overview.json` is anonymous and returns `Cache-Control: no-store`.
+Enable publication explicitly for each agent and choose its public alias and the
+fields to publish. The default catalog is empty, even when ingest has data.
+Aliases must be unique, different from ingest agent IDs and suitable for public
+display. The catalog is read at startup. This synthetic example extends the
+local demo above.
+
+```sh
+export Dashboard__PublicNodes__demo__Alias=demo-edge
+export Dashboard__PublicNodes__demo__Metrics__0=memory
+export Dashboard__PublicNodes__demo__Metrics__1=cpu
+export Dashboard__PublicNodes__demo__Metrics__2=disk
+export Dashboard__PublicNodes__demo__Filesystem=demo-root
+```
+
+| Metric selection | Public values | Source selector |
+| --- | --- | --- |
+| `cpu` | CPU busy percentage | |
+| `memory` | Used and total memory in bytes | |
+| `swap` | Used and total swap in bytes | |
+| `disk` | Available and total filesystem space in bytes | `Filesystem` |
+| `network` | Receive and transmit bytes per second | `NetworkInterface` |
+| `temperature` | Temperature in °C | `TemperatureSensor` |
+
+Source selectors match the corresponding aliases in the agent configuration.
+The response includes `schemaVersion`, a persisted `revision`, a UTC `generatedAt`
+and the list of approved nodes. Each node has an `alias`, `status`, `observedAt`
+and typed `metrics`. A node is `unavailable` before its first eligible
+observation and `stale` at 90 seconds without a newer observation. Missing and
+unselected readings are `null`. CPU and network rates need two observations from
+the same boot and valid cumulative counter deltas.
+
+A background worker reads committed observations at startup and every two
+seconds. It atomically replaces the generated JSON file in the private state
+directory before switching the in-memory snapshot that serves requests. At
+startup it rebuilds with the current catalog from SQLite. Keep the SQLite state
+directory private. Each successful publication has a higher revision, and a
+failed publication can leave gaps in the sequence. The API returns `503` before a
+snapshot is ready or when a failed refresh leaves a snapshot beyond its
+freshness deadline.

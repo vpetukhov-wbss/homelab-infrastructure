@@ -6,13 +6,15 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using HomeLab.Pulse.Api.Telemetry.Retention;
 
 namespace HomeLab.Pulse.Api.IntegrationTests;
 
 internal sealed class PulseApiFactory(
     string path, string environment = "Production", TimeProvider? clock = null,
-    int? retentionBatchSize = null, bool runRetentionWorker = true) : WebApplicationFactory<Program>
+    int? retentionBatchSize = null, bool runRetentionWorker = true,
+    IReadOnlyDictionary<string, string?>? dashboard = null, ILoggerProvider? logging = null) : WebApplicationFactory<Program>
 {
     public static string AgentToken { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
@@ -28,14 +30,27 @@ internal sealed class PulseApiFactory(
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(environment);
-        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
-            new Dictionary<string, string?>(StringComparer.Ordinal)
+        if (logging is not null)
+        {
+            builder.ConfigureLogging(logs => logs.AddProvider(logging));
+        }
+
+        builder.ConfigureAppConfiguration((_, configuration) =>
+        {
+            configuration.AddInMemoryCollection(
+                new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["Telemetry:DatabasePath"] = path,
+                    ["Telemetry:Retention:BatchSize"] = retentionBatchSize?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "512",
+                    ["Telemetry:Agents:demo-a"] = Hash(AgentToken),
+                    ["Telemetry:Agents:demo-b"] = Hash(OtherAgentToken),
+                });
+
+            if (dashboard is not null)
             {
-                ["Telemetry:DatabasePath"] = path,
-                ["Telemetry:Retention:BatchSize"] = retentionBatchSize?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "512",
-                ["Telemetry:Agents:demo-a"] = Hash(AgentToken),
-                ["Telemetry:Agents:demo-b"] = Hash(OtherAgentToken),
-            }));
+                configuration.AddInMemoryCollection(dashboard);
+            }
+        });
         builder.ConfigureServices(services =>
         {
             if (clock is not null)
