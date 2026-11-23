@@ -12,8 +12,8 @@ receiver. The receiver keeps the history and drives a live dashboard.
 | Agent: Python 3.10+, standard library only | [`agent/`](agent/) | written, unit-tested |
 | Contracts: JSON Schema | [`contracts/`](contracts/) | version 1 |
 | Deployment: Ansible role and an opt-in playbook | [`pulse_agent`](../../ansible/roles/pulse_agent/), [`pulse-agent.yml`](../../ansible/playbooks/pulse-agent.yml) | not applied to any machine |
-| Receiver: .NET ingest and SQLite | [`backend/`](backend/) | local and integration-tested |
-| Public history, retention, dashboard and SignalR | planned | in development |
+| Receiver: .NET ingest, SQLite and retention | [`backend/`](backend/) | local and integration-tested |
+| Public history, dashboard and SignalR | planned | in development |
 
 ## How it fits together
 

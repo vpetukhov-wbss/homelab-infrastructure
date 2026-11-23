@@ -71,3 +71,19 @@ preserved on retry. Health and error responses contain no credentials or payload
 The xUnit suite uses a temporary SQLite file. It covers duplicate delivery,
 restart, request limits, validation, and write-lock recovery, and sends a sample
 using the production Python encoder and HTTP transport through Kestrel over loopback.
+
+## Telemetry retention
+
+The receiver starts a retention sweep after migrations at startup and runs it
+again every hour. Samples observed strictly before the cutoff are deleted oldest
+first. SQLite commits each batch independently. An interrupted sweep leaves
+undone batches for the next pass. The worker logs counts and SQLite error codes.
+
+| Environment variable | Default | Accepted values |
+| --- | --- | --- |
+| `Telemetry__Retention__Days` | 7 | 7–30 days |
+| `Telemetry__Retention__BatchSize` | 512 | 1–1024 rows |
+
+The lower bound matches the ingest replay window. Each sweep processes at most
+128 batches, so a large backlog can take multiple hours. SQLite reuses storage
+freed by ordinary deletes. The database file can retain its high-water size.
