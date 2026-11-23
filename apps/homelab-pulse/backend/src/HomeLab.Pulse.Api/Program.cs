@@ -3,6 +3,7 @@ using HomeLab.Pulse.Api.Dashboard.History;
 using HomeLab.Pulse.Api.Dashboard.Machines;
 using HomeLab.Pulse.Api.Dashboard.Overview;
 using HomeLab.Pulse.Api.Dashboard.Services;
+using HomeLab.Pulse.Api.Dashboard.Signals;
 using HomeLab.Pulse.Api.Hosting;
 using HomeLab.Pulse.Api.Telemetry.Ingest;
 using HomeLab.Pulse.Api.Telemetry.Persistence;
@@ -32,6 +33,23 @@ builder.Services.AddDbContext<TelemetryDbContext>((services, options) =>
     options.UseSqlite(TelemetryDatabase.ConnectionString(services.GetRequiredService<TelemetryStorageSettings>().DatabasePath)));
 builder.Services.AddTelemetryRetention(builder.Configuration);
 builder.Services.AddSingleton<PublicCatalog>();
+builder.Services.AddOptions<HealthSignalOptions>()
+    .Bind(builder.Configuration.GetSection(HealthSignalOptions.Section))
+    .Validate(options => options.SustainedWindow is { } window
+        && window >= TimeSpan.FromMinutes(1) && window <= TimeSpan.FromHours(1),
+        "Dashboard signal sustained window must be between one minute and one hour.")
+    .Validate(options => options.CpuUsagePercent is > 0 and <= 100
+        && options.MemoryUsagePercent is > 0 and <= 100
+        && options.DiskUsagePercent is > 0 and <= 100
+        && options.TemperatureCelsius is > 0 and <= 150
+        && options.NginxServerErrorPercent is > 0 and <= 100,
+        "Dashboard percentage and temperature signal thresholds are outside their safe ranges.")
+    .Validate(options => options.GiteaResponseTimeMs > 0 && options.CiWaitingJobs > 0
+        && options.RabbitReadyMessages > 0 && options.TlsExpiryDays > 0,
+        "Dashboard count and duration signal thresholds must be positive.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<NodeHealthSignals>();
+builder.Services.AddSingleton<ServiceHealthSignals>();
 builder.Services.AddSingleton<OverviewPublication>();
 builder.Services.AddScoped<OverviewProjection>();
 builder.Services.AddScoped<DashboardRevisionStore>();

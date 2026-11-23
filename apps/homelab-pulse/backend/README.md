@@ -274,6 +274,51 @@ and exposes `null` metrics. When these snapshot collectors report a failure with
 no timestamp, `observedAt` is `null` and the host envelope determines the age of
 that failure.
 
+## Health signals
+
+Overview nodes, machine details and individual service readings expose a typed
+`signals` array. A signal contains `severity`, `messageKey` and, when the source
+supports them, `value`, `unit`, `window` and `threshold`. The UI owns the funny
+display copy; the stable keys map to phrases such as `node.ghosted_us` (“This
+node ghosted us”), `temperature.getting_hot` (“It’s getting hot in here”),
+`disk.getting_crowded` (“Dude, the disk’s getting crowded”), and
+`smart.drive_needs_checkup` (“This drive needs a check-up”). Other supported
+keys cover busy CPU, crowded RAM, PostgreSQL deadlocks, Redis evictions,
+RabbitMQ queue depth, NGINX 5xx percentage, slow or unhealthy Gitea, CI queue
+depth, unhealthy Docker workloads, expiring TLS certificates and stale or
+failed service probes.
+
+CPU, RAM and temperature signals require distinct, fresh observations that
+remain over the threshold for the full sustained window. Re-reading one cached
+sample cannot advance the window. A gap of 90 seconds resets the streak. A new
+qualifying value below the threshold removes the signal. Disk capacity and
+SMART signals describe a current qualified reading. Rate signals are emitted
+only when their underlying counter window is valid; truncated NGINX access
+windows cannot produce a 5xx signal. A `stale` node or service produces a
+ghosted signal, while an `unavailable` service produces a failed-check signal
+only after the collector actually reported the failure.
+Sustained streak state is intentionally process-local: after an API restart the
+receiver waits for a new full window instead of inferring an incident from old
+samples.
+
+| Environment variable | Default |
+| --- | ---: |
+| `Dashboard__Signals__SustainedWindow` | `00:05:00` |
+| `Dashboard__Signals__CpuUsagePercent` | `85` |
+| `Dashboard__Signals__MemoryUsagePercent` | `90` |
+| `Dashboard__Signals__DiskUsagePercent` | `80` |
+| `Dashboard__Signals__TemperatureCelsius` | `85` |
+| `Dashboard__Signals__NginxServerErrorPercent` | `5` |
+| `Dashboard__Signals__GiteaResponseTimeMs` | `1000` |
+| `Dashboard__Signals__CiWaitingJobs` | `7` |
+| `Dashboard__Signals__RabbitReadyMessages` | `100` |
+| `Dashboard__Signals__TlsExpiryDays` | `14` |
+
+Invalid or unsafe thresholds stop startup. The current telemetry contract does
+not provide verified backup/restore outcomes, disk I/O latency, packet drops or
+volume-growth history, so the API deliberately publishes no signals claiming
+those events occurred.
+
 ## Public history
 
 `GET /api/v1/history/fleet/{window}.json` serves the fixed `1h`, `24h` and `7d`

@@ -80,6 +80,14 @@ public sealed class MachineTests : IDisposable
         Assert.Equal(0, smart.GetProperty("nvmeMediaErrors").GetInt64());
         Assert.Equal(JsonValueKind.Null, smart.GetProperty("pendingSectors").ValueKind);
 
+        var failingAt = Now.AddSeconds(4);
+        await PostAsync(client, Sample(failingAt, diskObservation: failingAt)
+            .Replace("\"healthPassed\":true", "\"healthPassed\":false", StringComparison.Ordinal));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var unhealthy = await WaitAsync(client,
+            machine => machine.GetProperty("host").GetProperty("observedAt").GetDateTimeOffset() == failingAt);
+        Assert.Equal("smart.drive_needs_checkup", unhealthy.GetProperty("signals")[0].GetProperty("messageKey").GetString());
+
         foreach (var marker in new[] { "private-", "unapproved-drive", "Private Model", "ignored-metric", "bootId", "sampleId", "demo-a" })
         {
             Assert.DoesNotContain(marker, live.GetRawText(), StringComparison.Ordinal);

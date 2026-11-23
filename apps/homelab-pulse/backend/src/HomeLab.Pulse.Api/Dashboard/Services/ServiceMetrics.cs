@@ -21,9 +21,16 @@ internal static class ServiceMetrics
         var transactions = (double?)commits + rollbacks;
         var hitPercent = Percent(hits, reads);
         var continuous = commits >= 0 && rollbacks >= 0 && hits >= 0 && reads >= 0 && deadlocks >= 0;
-        return new PostgreSqlMetrics(inRecovery, HostTelemetry.Bytes(latest, "databaseBytes"),
-            HostTelemetry.Bytes(latest, "connectedBackends"), continuous ? transactions / elapsed : null,
-            continuous ? hitPercent : null, continuous ? deadlocks : null, continuous ? elapsed : null);
+        return new PostgreSqlMetrics
+        {
+            InRecovery = inRecovery,
+            DatabaseBytes = HostTelemetry.Bytes(latest, "databaseBytes"),
+            ConnectedBackends = HostTelemetry.Bytes(latest, "connectedBackends"),
+            TransactionsPerSecond = continuous ? transactions / elapsed : null,
+            BufferHitPercent = continuous ? hitPercent : null,
+            DeadlocksDelta = continuous ? deadlocks : null,
+            RateWindowSeconds = continuous ? elapsed : null,
+        };
     }
 
     internal static RedisMetrics Redis(JsonElement latest, JsonElement previous, double? elapsed)
@@ -36,15 +43,27 @@ internal static class ServiceMetrics
         var continuous = elapsed.HasValue && hits >= 0 && misses >= 0 && evictions >= 0;
         var hitPercent = continuous ? Percent(hits, misses) : null;
         var evicted = continuous ? evictions : null;
-        return new RedisMetrics(used, max, max > 0 ? used * 100.0 / max : null,
-            HostTelemetry.Bytes(latest, "operationsPerSecond"), HostTelemetry.Bytes(latest, "connectedClients"),
-            HostTelemetry.Bytes(latest, "aofCurrentSizeBytes"), hitPercent, evicted,
-            hitPercent.HasValue || evicted.HasValue ? elapsed : null);
+        return new RedisMetrics
+        {
+            UsedMemoryBytes = used,
+            MaxMemoryBytes = max,
+            MemoryUtilizationPercent = max > 0 ? used * 100.0 / max : null,
+            OperationsPerSecond = HostTelemetry.Bytes(latest, "operationsPerSecond"),
+            ConnectedClients = HostTelemetry.Bytes(latest, "connectedClients"),
+            AofCurrentSizeBytes = HostTelemetry.Bytes(latest, "aofCurrentSizeBytes"),
+            KeyspaceHitPercent = hitPercent,
+            EvictedKeysDelta = evicted,
+            RateWindowSeconds = hitPercent.HasValue || evicted.HasValue ? elapsed : null,
+        };
     }
 
-    internal static RabbitMqMetrics RabbitMq(JsonElement latest) =>
-        new(HostTelemetry.Bytes(latest, "messages"), HostTelemetry.Bytes(latest, "messagesReady"),
-            HostTelemetry.Bytes(latest, "messagesUnacknowledged"), HostTelemetry.Bytes(latest, "consumers"));
+    internal static RabbitMqMetrics RabbitMq(JsonElement latest) => new()
+    {
+        Messages = HostTelemetry.Bytes(latest, "messages"),
+        MessagesReady = HostTelemetry.Bytes(latest, "messagesReady"),
+        MessagesUnacknowledged = HostTelemetry.Bytes(latest, "messagesUnacknowledged"),
+        Consumers = HostTelemetry.Bytes(latest, "consumers"),
+    };
 
     internal static SqliteMetrics Sqlite(JsonElement latest)
     {
@@ -54,7 +73,14 @@ internal static class ServiceMetrics
         var journal = HostTelemetry.Bytes(latest, "rollbackJournalBytes");
         var total = HostTelemetry.Bytes(latest, "totalBytes");
         var parts = (decimal?)database + wal + sharedMemory + journal;
-        return new SqliteMetrics(database, wal, sharedMemory, journal, total == parts ? total : null);
+        return new SqliteMetrics
+        {
+            DatabaseBytes = database,
+            WalBytes = wal,
+            SharedMemoryBytes = sharedMemory,
+            RollbackJournalBytes = journal,
+            TotalBytes = total == parts ? total : null,
+        };
     }
 
     internal static long? Change(JsonElement latest, JsonElement previous, string field) =>

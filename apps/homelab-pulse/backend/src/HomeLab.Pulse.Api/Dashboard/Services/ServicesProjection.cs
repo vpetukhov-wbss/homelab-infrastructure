@@ -1,10 +1,14 @@
 using System.Text.Json;
+using HomeLab.Pulse.Api.Dashboard.Signals;
 
 namespace HomeLab.Pulse.Api.Dashboard.Services;
 
 internal sealed record ServicesProjectionResult(IReadOnlyList<NodeServices> Nodes, DateTimeOffset? FreshUntil);
 
-internal sealed class ServicesProjection(ServiceCatalog catalog, ServiceObservations observations)
+internal sealed class ServicesProjection(
+    ServiceCatalog catalog,
+    ServiceObservations observations,
+    ServiceHealthSignals healthSignals)
 {
     private static readonly TimeSpan ProbeFreshness = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan SnapshotFreshness = TimeSpan.FromMinutes(3);
@@ -30,18 +34,23 @@ internal sealed class ServicesProjection(ServiceCatalog catalog, ServiceObservat
                 }
             }
 
-            nodes.Add(new NodeServices(node.Alias,
-                Project(node, observed, ServiceKind.PostgreSql, now, ServiceMetrics.PostgreSql),
-                Project(node, observed, ServiceKind.Redis, now, ServiceMetrics.Redis),
-                Project(node, observed, ServiceKind.RabbitMq, now, (latest, _, _) => ServiceMetrics.RabbitMq(latest)),
-                Project(node, observed, ServiceKind.Sqlite, now, (latest, _, _) => ServiceMetrics.Sqlite(latest)),
-                Project(node, observed, ServiceKind.Nginx, now, ProxyCiDockerMetrics.Nginx),
-                Project(node, observed, ServiceKind.NginxAccess, now, (latest, _, _) => ProxyCiDockerMetrics.NginxAccess(latest)),
-                Project(node, observed, ServiceKind.Tls, now, (latest, _, _) => ProxyCiDockerMetrics.Tls(latest)),
-                Project(node, observed, ServiceKind.Gitea, now, (latest, _, _) => ProxyCiDockerMetrics.Gitea(latest)),
-                Project(node, observed, ServiceKind.GiteaActions, now, (latest, _, _) => ProxyCiDockerMetrics.GiteaActions(latest)),
-                Project(node, observed, ServiceKind.DockerWorkload, now, (latest, _, _) => ProxyCiDockerMetrics.DockerWorkload(latest, volumes)),
-                Project(node, observed, ServiceKind.DockerVolume, now, (latest, _, _) => ProxyCiDockerMetrics.DockerVolume(latest))));
+            var context = new ServiceProjectionContext(node, observed, now);
+            nodes.Add(new NodeServices
+            {
+                Alias = node.Alias,
+                PostgreSql = Project(context, ServiceKind.PostgreSql, ServiceMetrics.PostgreSql),
+                Redis = Project(context, ServiceKind.Redis, ServiceMetrics.Redis),
+                RabbitMq = Project(context, ServiceKind.RabbitMq, (latest, _, _) => ServiceMetrics.RabbitMq(latest)),
+                Sqlite = Project(context, ServiceKind.Sqlite, (latest, _, _) => ServiceMetrics.Sqlite(latest)),
+                Nginx = Project(context, ServiceKind.Nginx, ProxyCiDockerMetrics.Nginx),
+                NginxAccess = Project(context, ServiceKind.NginxAccess, (latest, _, _) => ProxyCiDockerMetrics.NginxAccess(latest)),
+                Tls = Project(context, ServiceKind.Tls, (latest, _, _) => ProxyCiDockerMetrics.Tls(latest)),
+                Gitea = Project(context, ServiceKind.Gitea, (latest, _, _) => ProxyCiDockerMetrics.Gitea(latest)),
+                GiteaActions = Project(context, ServiceKind.GiteaActions, (latest, _, _) => ProxyCiDockerMetrics.GiteaActions(latest)),
+                DockerWorkloads = Project(context, ServiceKind.DockerWorkload,
+                    (latest, _, _) => ProxyCiDockerMetrics.DockerWorkload(latest, volumes)),
+                DockerVolumes = Project(context, ServiceKind.DockerVolume, (latest, _, _) => ProxyCiDockerMetrics.DockerVolume(latest)),
+            });
         }
 
         return new ServicesProjectionResult(nodes, freshUntil);
@@ -54,33 +63,75 @@ internal sealed class ServicesProjection(ServiceCatalog catalog, ServiceObservat
         _ => ProbeFreshness,
     };
 
-    private static ServiceReading<T>[] Project<T>(
-        ServiceNode node, Dictionary<string, ServiceObservationPair> observed, ServiceKind kind, DateTimeOffset now,
+    private ServiceReading<T>[] Project<T>(
+        ServiceProjectionContext context,
+        ServiceKind kind,
         Func<JsonElement, JsonElement, double?, T> metrics) where T : class =>
-        node.Services.Where(service => service.Kind == kind).Select(service =>
+        context.Node.Services.Where(service => service.Kind == kind).Select(service =>
         {
-            if (!observed.TryGetValue(service.Alias, out var pair))
+            if (!context.Observed.TryGetValue(service.Alias, out var pair))
             {
-                return new ServiceReading<T>(service.Alias, "unknown", null, null);
+                return CreateReading(new ServiceSignalInput<T>
+                {
+                    Kind = kind,
+                    Status = "unknown",
+                    ObservedAt = null,
+                    Metrics = null,
+                    EvaluatedAt = context.EvaluatedAt,
+                }, service.Alias);
             }
 
             var latest = pair.Latest;
             var freshness = Freshness(kind);
-            if (latest.Status == "stale" || now - latest.EffectiveAt >= freshness)
+            if (latest.Status == "stale" || context.EvaluatedAt - latest.EffectiveAt >= freshness)
             {
-                return new ServiceReading<T>(service.Alias, "stale", latest.ObservedAt, null);
+                return CreateReading(new ServiceSignalInput<T>
+                {
+                    Kind = kind,
+                    Status = "stale",
+                    ObservedAt = latest.ObservedAt,
+                    Metrics = null,
+                    EvaluatedAt = context.EvaluatedAt,
+                }, service.Alias);
             }
 
             if (latest.Status == "unavailable")
             {
-                return new ServiceReading<T>(service.Alias, "unavailable", latest.ObservedAt, null);
+                return CreateReading(new ServiceSignalInput<T>
+                {
+                    Kind = kind,
+                    Status = "unavailable",
+                    ObservedAt = latest.ObservedAt,
+                    Metrics = null,
+                    EvaluatedAt = context.EvaluatedAt,
+                }, service.Alias);
             }
 
             var previous = pair.Previous;
             var window = latest.ObservedAt - previous?.ObservedAt;
             var elapsed = previous is { Status: "available" } && previous.BootId == latest.BootId
                 && window > TimeSpan.Zero && window <= freshness ? window.Value.TotalSeconds : (double?)null;
-            return new ServiceReading<T>(service.Alias, "available", latest.ObservedAt,
-                metrics(latest.Data, elapsed.HasValue ? previous!.Data : default, elapsed));
+            return CreateReading(new ServiceSignalInput<T>
+            {
+                Kind = kind,
+                Status = "available",
+                ObservedAt = latest.ObservedAt,
+                Metrics = metrics(latest.Data, elapsed.HasValue ? previous!.Data : default, elapsed),
+                EvaluatedAt = context.EvaluatedAt,
+            }, service.Alias);
         }).ToArray();
+
+    private ServiceReading<T> CreateReading<T>(ServiceSignalInput<T> input, string alias) where T : class => new()
+        {
+            Alias = alias,
+            Status = input.Status,
+            ObservedAt = input.ObservedAt,
+            Metrics = input.Metrics,
+            Signals = healthSignals.Evaluate(input),
+        };
+
+    private sealed record ServiceProjectionContext(
+        ServiceNode Node,
+        Dictionary<string, ServiceObservationPair> Observed,
+        DateTimeOffset EvaluatedAt);
 }
