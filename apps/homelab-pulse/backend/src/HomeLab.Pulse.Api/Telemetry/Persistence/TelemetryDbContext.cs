@@ -13,5 +13,6 @@ internal sealed class TelemetryDbContext(DbContextOptions<TelemetryDbContext> op
         sample.HasKey(item => new { item.AgentId, item.SampleId });
         sample.Property(item => item.AgentId).HasMaxLength(32);
         sample.HasIndex(item => new { item.AgentId, item.ObservedAtUtcTicks });
+        sample.HasIndex(item => item.ObservedAtUtcTicks);
     }
 }

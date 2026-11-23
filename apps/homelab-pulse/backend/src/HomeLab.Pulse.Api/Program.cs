@@ -1,6 +1,7 @@
 using HomeLab.Pulse.Api.Hosting;
 using HomeLab.Pulse.Api.Telemetry.Ingest;
 using HomeLab.Pulse.Api.Telemetry.Persistence;
+using HomeLab.Pulse.Api.Telemetry.Retention;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,6 +25,7 @@ builder.Services.AddSingleton(services => new TelemetryStorageSettings(Path.GetF
     services.GetRequiredService<IWebHostEnvironment>().ContentRootPath)));
 builder.Services.AddDbContext<TelemetryDbContext>((services, options) =>
     options.UseSqlite(TelemetryDatabase.ConnectionString(services.GetRequiredService<TelemetryStorageSettings>().DatabasePath)));
+builder.Services.AddTelemetryRetention(builder.Configuration);
 builder.Services.AddHealthChecks().AddCheck<TelemetryReadiness>("telemetry-storage", tags: ["ready"]);
 
 var app = builder.Build();

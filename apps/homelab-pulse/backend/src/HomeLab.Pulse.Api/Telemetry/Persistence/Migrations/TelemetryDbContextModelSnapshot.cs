@@ -38,6 +38,8 @@ namespace HomeLab.Pulse.Api.Telemetry.Persistence.Migrations
 
                     b.HasKey("AgentId", "SampleId");
 
+                    b.HasIndex("ObservedAtUtcTicks");
+
                     b.HasIndex("AgentId", "ObservedAtUtcTicks");
 
                     b.ToTable("TelemetrySamples", (string)null);
