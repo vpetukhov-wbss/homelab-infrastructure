@@ -12,22 +12,22 @@ internal sealed class ServicesPublication(TelemetryStorageSettings storage)
 
     public PublishedServices? Current => Volatile.Read(ref _current);
 
-    public async Task PublishAsync(IReadOnlyList<NodeServices> nodes, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task PublishAsync(ServicesProjectionResult projection, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var state = JsonSerializer.SerializeToUtf8Bytes(nodes, JsonSerializerOptions.Web);
+        var state = JsonSerializer.SerializeToUtf8Bytes(projection.Nodes, JsonSerializerOptions.Web);
+        var expiry = projection.FreshUntil + ServicesWorker.Frequency;
         if (Current is { } existing && state.AsSpan().SequenceEqual(existing.State))
         {
+            if (existing.ExpiresAt != expiry)
+            {
+                Volatile.Write(ref _current, existing with { ExpiresAt = expiry });
+            }
+
             return;
         }
 
-        var oldestCurrent = nodes.SelectMany(node => CurrentTimes(node.PostgreSql).Concat(CurrentTimes(node.Redis))
-            .Concat(CurrentTimes(node.RabbitMq)).Concat(CurrentTimes(node.Sqlite))).Min();
-        var expiry = oldestCurrent + ServicesProjection.Freshness + ServicesWorker.Frequency;
-        var json = JsonSerializer.SerializeToUtf8Bytes(new ServicesSnapshot(1, now, nodes), JsonSerializerOptions.Web);
+        var json = JsonSerializer.SerializeToUtf8Bytes(new ServicesSnapshot(1, now, projection.Nodes), JsonSerializerOptions.Web);
         await DashboardSnapshotFile.ReplaceAsync(_path, json, cancellationToken);
         Volatile.Write(ref _current, new PublishedServices(state, json, expiry));
     }
-
-    private static IEnumerable<DateTimeOffset?> CurrentTimes<T>(IReadOnlyList<ServiceReading<T>> readings) where T : class =>
-        readings.Where(reading => reading.Status is "available" or "unavailable").Select(reading => reading.ObservedAt);
 }

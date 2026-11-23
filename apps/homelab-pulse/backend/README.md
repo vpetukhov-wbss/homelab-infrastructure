@@ -191,7 +191,7 @@ when a failed refresh leaves live readings past their freshness deadline.
 
 `GET /api/v1/services.json` returns `schemaVersion`, UTC `generatedAt` and
 `nodes`. Each node groups typed `postgresql`, `redis`, `rabbitmq` and `sqlite`
-entries by approved public alias. The service catalog is empty by default.
+entries by approved public alias alongside the proxy, CI and Docker groups below. The service catalog is empty by default.
 
 Configure one public alias and one authoritative collector per logical service.
 `Node` is the exact public node alias from the Overview catalog. The selected
@@ -214,8 +214,8 @@ export Dashboard__PublicServices__demo-file__Source=agent-demo-file
 
 Each entry shows `alias`, `status`, `observedAt` and `metrics`. Status is
 `unknown` before an eligible probe, `unavailable` after a fresh failed probe,
-`available` after a fresh successful probe and `stale` at 90 seconds from the
-probe time. Unsupported fields and non-current metrics are `null`. Measured
+`available` after a fresh successful probe and `stale` when the collector's
+freshness window closes. The four database and queue collectors use 90 seconds. Unsupported fields and non-current metrics are `null`. Measured
 zero is preserved, including zero queued messages, zero Redis operations per
 second and absent SQLite sidecars measured as zero bytes.
 
@@ -243,3 +243,33 @@ It atomically replaces the services JSON in the private state directory before
 switching the in-memory publication. The public route sends
 `Cache-Control: no-store` and returns `503` until a snapshot is published or
 when a failed refresh leaves a snapshot past its freshness deadline.
+
+### Proxy, Gitea Actions and Docker
+
+The same route also returns `nginx`, `nginxAccess`, `tls`, `gitea`,
+`giteaActions`, `dockerWorkloads` and `dockerVolumes`. Use
+`Dashboard__PublicServices__<public-alias>__Node` to select an approved node and
+`Dashboard__PublicServices__<public-alias>__Kind` for each group.
+
+| Kind | Published metrics |
+| --- | --- |
+| `nginx` | Current connections, total connections and requests, and requests per second from distinct probes on the same boot with non-decreasing counters. The agent reports host boot identity. NGINX process restarts can escape reset detection when counters have already recovered. |
+| `nginx-access` | Five-minute request and 5xx counts and the bounded-tail flag. P95 in milliseconds and 5xx percent require a complete, nonempty window. Counts from a truncated tail describe the sampled tail. |
+| `tls` | Certificate expiry from the agent's verified TLS probe. |
+| `gitea` | Database and cache health from the Gitea probe and its measured response time in milliseconds. |
+| `gitea-actions` | Waiting, running and blocked jobs, terminal job counts over the last hour, runner counts and mean duration in seconds when timed jobs exist. |
+| `docker-workload` | Runtime state, optional health, restart count and policy, CPU and memory limits and usage, and approved volume attachments with `ro`, `rw` or `mixed` mode. |
+| `docker-volume` | Used bytes, available bytes and total capacity of the shared filesystem when measured. `quotaBytes` is `null` with the current agent contract. |
+
+Docker entries also require `Source` set to the corresponding private collector
+alias. A workload includes attachments only for volumes approved on the same
+public node and translates the attachment names to those volumes' public aliases.
+Use `capacityScope: "sharedFilesystem"` to label filesystem totals as shared
+storage. Volume sizes stay independent of filesystem capacity and quota.
+
+The proxy and Gitea health probes use a 90-second freshness window. Gitea Actions
+and Docker workload snapshots use three minutes, and Docker volume snapshots
+use fifteen minutes. An explicit stale result keeps its original timestamp
+and exposes `null` metrics. When these snapshot collectors report a failure with
+no timestamp, `observedAt` is `null` and the host envelope determines the age of
+that failure.

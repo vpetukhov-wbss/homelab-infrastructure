@@ -18,8 +18,8 @@ internal sealed partial class ServicesWorker(
             {
                 var now = clock.GetUtcNow();
                 await using var scope = scopes.CreateAsyncScope();
-                var nodes = await scope.ServiceProvider.GetRequiredService<ServicesProjection>().ReadAsync(now, stoppingToken);
-                await publication.PublishAsync(nodes, now, stoppingToken);
+                var projection = await scope.ServiceProvider.GetRequiredService<ServicesProjection>().ReadAsync(now, stoppingToken);
+                await publication.PublishAsync(projection, now, stoppingToken);
                 if (catalog.Nodes.Count == 0)
                 {
                     return;

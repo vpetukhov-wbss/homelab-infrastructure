@@ -57,7 +57,7 @@ internal static class ServiceMetrics
         return new SqliteMetrics(database, wal, sharedMemory, journal, total == parts ? total : null);
     }
 
-    private static long? Change(JsonElement latest, JsonElement previous, string field) =>
+    internal static long? Change(JsonElement latest, JsonElement previous, string field) =>
         HostTelemetry.Bytes(latest, field) - HostTelemetry.Bytes(previous, field);
 
     private static double? Percent(long? numerator, long? remaining)
@@ -66,7 +66,7 @@ internal static class ServiceMetrics
         return total > 0 ? numerator * 100.0 / total : null;
     }
 
-    private static bool? Boolean(JsonElement reading, string key)
+    internal static bool? Boolean(JsonElement reading, string key)
     {
         var field = HostTelemetry.Property(reading, key);
         return field.ValueKind is JsonValueKind.True or JsonValueKind.False ? field.GetBoolean() : null;
