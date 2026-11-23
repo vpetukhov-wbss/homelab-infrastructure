@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <Content Include="Fixtures/send_sample.py" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../../agent/src/pulse_agent/models.py" Link="Fixtures/pulse_agent/models.py" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../../agent/src/pulse_agent/transport.py" Link="Fixtures/pulse_agent/transport.py" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../../src/HomeLab.Pulse.Api/HomeLab.Pulse.Api.csproj" />
+  </ItemGroup>
+</Project>

@@ -4,17 +4,16 @@ My own monitoring for the homelab. A small agent on every Linux machine measures
 host and the services on it, and sends the readings over WireGuard to a private .NET
 receiver. The receiver keeps the history and drives a live dashboard.
 
-> **Status, 2026-11-22.** The agent, its contracts and its Ansible role are in this
-> repository, and the agent's unit tests pass. **Nothing is deployed yet:** no machine
-> is in the `pulse_agents` inventory group. Machines join once the .NET receiver,
-> developed outside this repository, accepts the contract.
+> The Python agent, the telemetry contract, and the first .NET ingest slice are
+> in this repository. No machine is deployed through the `pulse_agents` inventory group.
 
 | Part | Where | State |
 |---|---|---|
 | Agent: Python 3.10+, standard library only | [`agent/`](agent/) | written, unit-tested |
 | Contracts: JSON Schema | [`contracts/`](contracts/) | version 1 |
 | Deployment: Ansible role and an opt-in playbook | [`pulse_agent`](../../ansible/roles/pulse_agent/), [`pulse-agent.yml`](../../ansible/playbooks/pulse-agent.yml) | not applied to any machine |
-| Receiver: history, retention, dashboard (.NET, SignalR) | outside this repository | in development |
+| Receiver: .NET ingest and SQLite | [`backend/`](backend/) | local and integration-tested |
+| Public history, retention, dashboard and SignalR | planned | in development |
 
 ## How it fits together
 
@@ -30,7 +29,7 @@ flowchart TB
         agent -- "one file per sample" --> outbox[("outbox<br/>/var/lib/pulse-agent")]
     end
     optional["optional probes, enabled per machine<br/>NGINX stub_status · SQLite file sizes<br/>Redis INFO, own ACL user<br/>PostgreSQL statistics, own read-only role"] --> agent
-    outbox -- "POST /internal/v1/telemetry<br/>bearer token · over wg1" --> api["receiver (.NET), outside this repository<br/>history · retention<br/>live dashboard (SignalR)"]
+    outbox -- "POST /internal/v1/telemetry<br/>bearer token · over wg1" --> api["receiver (.NET)<br/>validated ingest · SQLite"]
 ~~~
 
 Each machine runs two separate pieces:

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HomeLab.Pulse.Api/HomeLab.Pulse.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HomeLab.Pulse.Api.IntegrationTests/HomeLab.Pulse.Api.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
