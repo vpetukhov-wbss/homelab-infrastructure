@@ -1,3 +1,5 @@
+using HomeLab.Pulse.Api.Dashboard;
+using HomeLab.Pulse.Api.Dashboard.Machines;
 using HomeLab.Pulse.Api.Dashboard.Overview;
 using HomeLab.Pulse.Api.Hosting;
 using HomeLab.Pulse.Api.Telemetry.Ingest;
@@ -32,13 +34,19 @@ builder.Services.AddSingleton<OverviewPublication>();
 builder.Services.AddScoped<OverviewProjection>();
 builder.Services.AddScoped<DashboardRevisionStore>();
 builder.Services.AddHostedService<OverviewWorker>();
+builder.Services.AddSingleton<ApprovedHardware>();
+builder.Services.AddSingleton<MachineCatalog>();
+builder.Services.AddSingleton<MachinePublication>();
+builder.Services.AddScoped<MachineProjection>();
+builder.Services.AddScoped<SmartProjection>();
+builder.Services.AddHostedService<MachineWorker>();
 builder.Services.AddHealthChecks().AddCheck<TelemetryReadiness>("telemetry-storage", tags: ["ready"]);
 
 var app = builder.Build();
 
 _ = app.Services.GetRequiredService<AgentCredentials>();
 _ = app.Services.GetRequiredService<TelemetryValidator>();
-_ = app.Services.GetRequiredService<PublicCatalog>();
+_ = app.Services.GetRequiredService<MachineCatalog>();
 await TelemetryDatabase.InitializeAsync(app.Services, app.Lifetime.ApplicationStopping);
 
 app.UseExceptionHandler();
@@ -54,5 +62,6 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => fa
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapTelemetryIngest();
 app.MapDashboardOverview();
+app.MapDashboardMachine();
 
 await app.RunAsync();

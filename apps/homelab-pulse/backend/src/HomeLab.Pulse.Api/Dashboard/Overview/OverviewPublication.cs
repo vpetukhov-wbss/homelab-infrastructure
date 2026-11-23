@@ -16,19 +16,9 @@ internal sealed class OverviewPublication(TelemetryStorageSettings storage)
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(snapshot, JsonSerializerOptions.Web);
         var deadline = snapshot.Nodes.Where(node => node.Status == "available").Min(node => node.ObservedAt)
-            + OverviewProjection.Freshness + OverviewWorker.Frequency;
+            + HostTelemetry.Freshness + OverviewWorker.Frequency;
         var published = new PublishedOverview(snapshot, json, deadline);
-        var tempPath = _path + $".{Guid.NewGuid():N}.tmp";
-        try
-        {
-            await File.WriteAllBytesAsync(tempPath, json, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Move(tempPath, _path, overwrite: true);
-            Volatile.Write(ref _current, published);
-        }
-        finally
-        {
-            File.Delete(tempPath);
-        }
+        await DashboardSnapshotFile.ReplaceAsync(_path, json, cancellationToken);
+        Volatile.Write(ref _current, published);
     }
 }
