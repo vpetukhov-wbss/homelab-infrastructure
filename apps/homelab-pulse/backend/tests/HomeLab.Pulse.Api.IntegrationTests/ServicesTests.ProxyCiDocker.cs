@@ -7,6 +7,35 @@ namespace HomeLab.Pulse.Api.IntegrationTests;
 public sealed partial class ServicesTests
 {
     [Fact]
+    public async Task ServiceSignalsFollowVerifiedMeasurementsAndClearOnRecovery()
+    {
+        var clock = new FakeTimeProvider(Now);
+        await using var app = new PulseApiFactory(DatabasePath, clock: clock, dashboard: ProxyCatalog());
+        using var client = app.CreateClient();
+        await WaitAsync(client, _ => true);
+
+        await PostAsync(client, Sample(Now, additional: HealthReadings(Now, unhealthy: true)));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var active = await WaitAsync(client, root => At(root, "giteaActions", "demo-ci") == Now);
+        Assert.Equal("nginx.proxy_busy", SignalKey(active, "nginxAccess", "demo-access"));
+        Assert.Equal("tls.expiring_soon", SignalKey(active, "tls", "demo-cert"));
+        Assert.Equal("gitea.feeling_slow", SignalKey(active, "gitea", "demo-git"));
+        Assert.Equal("ci.queue_growing", SignalKey(active, "giteaActions", "demo-ci"));
+        Assert.Equal("docker.workload_unhealthy", SignalKey(active, "dockerWorkloads", "demo-app"));
+
+        var recoveredAt = Now.AddSeconds(10);
+        clock.Advance(TimeSpan.FromSeconds(8));
+        await PostAsync(client, Sample(recoveredAt, additional: HealthReadings(recoveredAt, unhealthy: false)));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var recovered = await WaitAsync(client, root => At(root, "giteaActions", "demo-ci") == recoveredAt);
+        foreach (var (kind, alias) in new[] { ("nginxAccess", "demo-access"), ("tls", "demo-cert"),
+            ("gitea", "demo-git"), ("giteaActions", "demo-ci"), ("dockerWorkloads", "demo-app") })
+        {
+            Assert.Empty(Service(recovered, kind, alias).GetProperty("signals").EnumerateArray());
+        }
+    }
+
+    [Fact]
     public async Task ProxyAutomationAndDockerPublishOnlyApprovedMetricsAndAliases()
     {
         var clock = new FakeTimeProvider(Now);
@@ -68,8 +97,14 @@ public sealed partial class ServicesTests
         var access = Metrics(snapshot, "nginxAccess", "demo-access");
         Assert.Equal(25, access.GetProperty("serverErrorPercent").GetDouble());
         Assert.Equal(128, access.GetProperty("requestTimeP95Ms").GetInt64());
+        Assert.Equal("nginx.proxy_busy", Service(snapshot, "nginxAccess", "demo-access")
+            .GetProperty("signals")[0].GetProperty("messageKey").GetString());
         Assert.Equal(expiry, Metrics(snapshot, "tls", "demo-cert").GetProperty("expiresAt").GetDateTimeOffset());
+        Assert.Equal("tls.expiring_soon", Service(snapshot, "tls", "demo-cert")
+            .GetProperty("signals")[0].GetProperty("messageKey").GetString());
         Assert.False(Metrics(snapshot, "gitea", "demo-git").GetProperty("cacheHealthy").GetBoolean());
+        Assert.Equal("gitea.check_failed", Service(snapshot, "gitea", "demo-git")
+            .GetProperty("signals")[0].GetProperty("messageKey").GetString());
         var actions = Metrics(snapshot, "giteaActions", "demo-ci");
         Assert.Equal(0, actions.GetProperty("waitingJobs").GetInt64());
         Assert.Equal(23, actions.GetProperty("meanJobDurationSecondsLastHour").GetInt64());
@@ -121,6 +156,8 @@ public sealed partial class ServicesTests
         var initial = await WaitAsync(client, root => Status(root, "dockerWorkloads", "demo-app") == "available");
         Assert.Equal("stale", Status(initial, "nginx", "demo-stub"));
         Assert.Equal("unavailable", Status(initial, "giteaActions", "demo-ci"));
+        Assert.Equal("service.check_failed", Service(initial, "giteaActions", "demo-ci")
+            .GetProperty("signals")[0].GetProperty("messageKey").GetString());
         Assert.Null(At(initial, "giteaActions", "demo-ci"));
         var volume = Metrics(initial, "dockerVolumes", "demo-data");
         Assert.Equal(0, volume.GetProperty("usedBytes").GetInt64());
@@ -269,5 +306,29 @@ public sealed partial class ServicesTests
         restartCount,
         restartPolicy = "no",
         usage = new { status = "unavailable" },
+    };
+
+    private static string? SignalKey(JsonElement root, string kind, string alias) => Service(root, kind, alias)
+        .GetProperty("signals")[0].GetProperty("messageKey").GetString();
+
+    private static Dictionary<string, object> HealthReadings(DateTimeOffset at, bool unhealthy) => new(StringComparer.Ordinal)
+    {
+        ["nginxAccess"] = Access(at, requests: 100, errors: unhealthy ? 10 : 0, p95: 100),
+        ["tls"] = new { status = "available", observedAt = at.UtcDateTime,
+            expiresAt = at.AddDays(unhealthy ? 5 : 30).UtcDateTime },
+        ["gitea"] = new { status = "available", observedAt = at.UtcDateTime, databaseHealthy = true,
+            cacheHealthy = true, responseTimeMs = unhealthy ? 1500 : 10 },
+        ["giteaActions"] = new
+        {
+            status = "available", observedAt = at.UtcDateTime, waitingJobs = unhealthy ? 8 : 0, runningJobs = 0,
+            blockedJobs = 0, successfulJobsLastHour = 0, failedJobsLastHour = 0, cancelledJobsLastHour = 0,
+            skippedJobsLastHour = 0, activeRunners = 1, idleRunners = 1, offlineRunners = 0, timedJobsLastHour = 0,
+        },
+        ["dockerWorkloads"] = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["private-workload"] = new { status = "available", observedAt = at.UtcDateTime, state = "running",
+                health = unhealthy ? "unhealthy" : "healthy", restartCount = 0, restartPolicy = "unless-stopped",
+                usage = new { status = "unavailable" } },
+        },
     };
 }

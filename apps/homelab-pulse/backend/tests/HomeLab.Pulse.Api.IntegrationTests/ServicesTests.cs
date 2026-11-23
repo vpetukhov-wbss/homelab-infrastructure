@@ -116,10 +116,14 @@ public sealed partial class ServicesTests : IDisposable
         Assert.Equal(1.5, pg.GetProperty("transactionsPerSecond").GetDouble());
         Assert.Equal(80, pg.GetProperty("bufferHitPercent").GetDouble());
         Assert.Equal(1, pg.GetProperty("deadlocksDelta").GetInt64());
+        Assert.Equal("postgres.traffic_jam", Service(result, "postgresql", "main-db")
+            .GetProperty("signals")[0].GetProperty("messageKey").GetString());
         var redis = Metrics(result, "redis", "main-cache");
         Assert.Equal(last, At(result, "redis", "main-cache"));
         Assert.Equal(80, redis.GetProperty("keyspaceHitPercent").GetDouble());
         Assert.Equal(2, redis.GetProperty("evictedKeysDelta").GetInt64());
+        Assert.Equal("redis.kicking_keys_out", Service(result, "redis", "main-cache")
+            .GetProperty("signals")[0].GetProperty("messageKey").GetString());
         Assert.Equal(50, redis.GetProperty("memoryUtilizationPercent").GetDouble());
     }
 
@@ -144,6 +148,8 @@ public sealed partial class ServicesTests : IDisposable
         var reset = await WaitAsync(client, root => At(root, "postgresql", "main-db") == Now);
         AssertNullRate(reset, "postgresql", "main-db", "transactionsPerSecond");
         AssertNullRate(reset, "redis", "main-cache", "keyspaceHitPercent");
+        Assert.Empty(Service(reset, "postgresql", "main-db").GetProperty("signals").EnumerateArray());
+        Assert.Empty(Service(reset, "redis", "main-cache").GetProperty("signals").EnumerateArray());
         Assert.Equal(12, Metrics(reset, "redis", "main-cache").GetProperty("operationsPerSecond").GetInt64());
 
         var renewed = Now.AddSeconds(20);

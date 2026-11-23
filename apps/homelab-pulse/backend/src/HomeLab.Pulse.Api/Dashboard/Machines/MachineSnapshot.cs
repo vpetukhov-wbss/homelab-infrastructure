@@ -1,5 +1,6 @@
 using HomeLab.Pulse.Api.Dashboard.Overview;
 using HomeLab.Pulse.Api.Dashboard.History;
+using HomeLab.Pulse.Api.Dashboard.Signals;
 
 namespace HomeLab.Pulse.Api.Dashboard.Machines;
 
@@ -22,6 +23,8 @@ internal sealed record MachineDetails
     public required IReadOnlyList<DiskReadout> Disks { get; init; }
 
     public required MachineHistory History { get; init; }
+
+    public required IReadOnlyList<HealthSignal> Signals { get; init; }
 }
 
 internal sealed record HardwareProfile

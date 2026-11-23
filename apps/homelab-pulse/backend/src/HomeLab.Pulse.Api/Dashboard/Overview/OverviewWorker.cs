@@ -19,14 +19,21 @@ internal sealed partial class OverviewWorker(
                 var now = clock.GetUtcNow();
                 await using var scope = scopes.CreateAsyncScope();
                 var nodes = await scope.ServiceProvider.GetRequiredService<OverviewProjection>().ReadAsync(now, stoppingToken);
-                if (publication.Current?.Snapshot.Nodes.SequenceEqual(nodes) is true)
+                var state = JsonSerializer.SerializeToUtf8Bytes(nodes, JsonSerializerOptions.Web);
+                if (publication.Current?.State.AsSpan().SequenceEqual(state) is true)
                 {
                     continue;
                 }
 
                 var revisions = scope.ServiceProvider.GetRequiredService<DashboardRevisionStore>();
                 var revision = await revisions.AllocateAsync(stoppingToken);
-                await publication.PublishAsync(new OverviewSnapshot(1, revision, now, nodes), stoppingToken);
+                await publication.PublishAsync(new OverviewSnapshot
+                {
+                    SchemaVersion = 1,
+                    Revision = revision,
+                    GeneratedAt = now,
+                    Nodes = nodes,
+                }, stoppingToken);
             }
             catch (Exception error) when (error is SqliteException or IOException or UnauthorizedAccessException or JsonException)
             {

@@ -108,7 +108,12 @@ internal sealed class HistoryProjection(TelemetryDbContext database, MachineCata
         var eligiblePrevious = elapsed > 0 && elapsed <= HostTelemetry.Freshness.TotalSeconds ? pair.Previous : null;
         using var previousDocument = eligiblePrevious is null ? null : JsonDocument.Parse(eligiblePrevious.Payload);
         var earlier = previousDocument is null ? default : HostTelemetry.Property(previousDocument.RootElement, "values");
-        var metrics = HostTelemetry.ReadMetrics(approved.Node, values, earlier, elapsed);
+        var metrics = HostTelemetry.ReadMetrics(approved.Node, new HostMetricWindow
+        {
+            Current = values,
+            Previous = earlier,
+            ElapsedSeconds = elapsed,
+        });
         var observedAt = HostTelemetry.ObservedAt(pair.Current);
         var bucket = output.Bucket(pair.Current);
         output.Points[bucket] = new MachineHistoryPoint
