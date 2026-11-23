@@ -1,3 +1,4 @@
+using HomeLab.Pulse.Api.Dashboard.Overview;
 using HomeLab.Pulse.Api.Hosting;
 using HomeLab.Pulse.Api.Telemetry.Ingest;
 using HomeLab.Pulse.Api.Telemetry.Persistence;
@@ -26,12 +27,18 @@ builder.Services.AddSingleton(services => new TelemetryStorageSettings(Path.GetF
 builder.Services.AddDbContext<TelemetryDbContext>((services, options) =>
     options.UseSqlite(TelemetryDatabase.ConnectionString(services.GetRequiredService<TelemetryStorageSettings>().DatabasePath)));
 builder.Services.AddTelemetryRetention(builder.Configuration);
+builder.Services.AddSingleton<PublicCatalog>();
+builder.Services.AddSingleton<OverviewPublication>();
+builder.Services.AddScoped<OverviewProjection>();
+builder.Services.AddScoped<DashboardRevisionStore>();
+builder.Services.AddHostedService<OverviewWorker>();
 builder.Services.AddHealthChecks().AddCheck<TelemetryReadiness>("telemetry-storage", tags: ["ready"]);
 
 var app = builder.Build();
 
 _ = app.Services.GetRequiredService<AgentCredentials>();
 _ = app.Services.GetRequiredService<TelemetryValidator>();
+_ = app.Services.GetRequiredService<PublicCatalog>();
 await TelemetryDatabase.InitializeAsync(app.Services, app.Lifetime.ApplicationStopping);
 
 app.UseExceptionHandler();
@@ -46,5 +53,6 @@ if (app.Environment.IsDevelopment())
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapTelemetryIngest();
+app.MapDashboardOverview();
 
 await app.RunAsync();

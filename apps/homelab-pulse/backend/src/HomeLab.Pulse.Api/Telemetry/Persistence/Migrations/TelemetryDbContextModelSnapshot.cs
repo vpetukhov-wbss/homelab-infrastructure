@@ -17,6 +17,27 @@ namespace HomeLab.Pulse.Api.Telemetry.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
+            modelBuilder.Entity("HomeLab.Pulse.Api.Telemetry.Persistence.DashboardRevision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Value")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DashboardRevision", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Value = 0L
+                        });
+                });
+
             modelBuilder.Entity("HomeLab.Pulse.Api.Telemetry.Persistence.TelemetrySample", b =>
                 {
                     b.Property<string>("AgentId")

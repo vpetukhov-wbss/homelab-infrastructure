@@ -5,3 +5,5 @@ TestResults/
 *.db-shm
 *.db-wal
 *.db-journal
+*.overview.json
+*.overview.json.*.tmp
