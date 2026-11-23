@@ -2,6 +2,7 @@ using HomeLab.Pulse.Api.Dashboard;
 using HomeLab.Pulse.Api.Dashboard.History;
 using HomeLab.Pulse.Api.Dashboard.Machines;
 using HomeLab.Pulse.Api.Dashboard.Overview;
+using HomeLab.Pulse.Api.Dashboard.Realtime;
 using HomeLab.Pulse.Api.Dashboard.Services;
 using HomeLab.Pulse.Api.Dashboard.Signals;
 using HomeLab.Pulse.Api.Hosting;
@@ -26,6 +27,9 @@ builder.Services.AddAuthentication(AgentAuthenticationHandler.SchemeName)
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AgentAuthenticationHandler>(
         AgentAuthenticationHandler.SchemeName, configureOptions: null);
 builder.Services.AddAuthorization();
+builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 4096);
+builder.Services.AddSingleton<PulseBroadcastWorker>();
+builder.Services.AddHostedService<PulseBroadcastWorker>(services => services.GetRequiredService<PulseBroadcastWorker>());
 builder.Services.AddSingleton(services => new TelemetryStorageSettings(Path.GetFullPath(
     services.GetRequiredService<IConfiguration>()["Telemetry:DatabasePath"] ?? "data/pulse.db",
     services.GetRequiredService<IWebHostEnvironment>().ContentRootPath)));
@@ -94,5 +98,6 @@ app.MapDashboardOverview();
 app.MapDashboardMachine();
 app.MapDashboardServices();
 app.MapDashboardHistory();
+app.MapHub<PulseHub>("/hubs/pulse").AllowAnonymous();
 
 await app.RunAsync();
