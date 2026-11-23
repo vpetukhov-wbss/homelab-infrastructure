@@ -1,38 +1,148 @@
 using HomeLab.Pulse.Api.Dashboard.Overview;
+using HomeLab.Pulse.Api.Dashboard.History;
 
 namespace HomeLab.Pulse.Api.Dashboard.Machines;
 
 internal sealed record MachineSnapshot(int SchemaVersion, DateTimeOffset GeneratedAt, MachineDetails Machine);
 
-internal sealed record MachineDetails(
-    string Alias, HardwareProfile? Hardware, HostReadouts Host, IReadOnlyList<FilesystemReadout> Filesystems,
-    IReadOnlyList<TemperatureReadout> Temperatures, IReadOnlyList<FanReadout> Fans, IReadOnlyList<DiskReadout> Disks);
+internal sealed record MachineDetails
+{
+    public required string Alias { get; init; }
 
-internal sealed record HardwareProfile(
-    string? Manufacturer, string? Model, HardwareCpu Cpu, long OsVisibleMemoryBytes, IReadOnlyList<MemoryModule>? MemoryModules);
+    public HardwareProfile? Hardware { get; init; }
 
-internal sealed record HardwareCpu(string Architecture, string? Model, long? PhysicalCoreCount, long LogicalCpuCount);
+    public required HostReadouts Host { get; init; }
 
-internal sealed record MemoryModule(
-    long CapacityBytes, string? Type, long? RatedSpeedMtPerSecond, long? ConfiguredSpeedMtPerSecond);
+    public required IReadOnlyList<FilesystemReadout> Filesystems { get; init; }
 
-internal sealed record DiskHardware(string Status, long? CapacityBytes = null, string? Model = null, bool? Rotational = null);
+    public required IReadOnlyList<TemperatureReadout> Temperatures { get; init; }
 
-internal sealed record HostReadouts(
-    string Status, DateTimeOffset? ObservedAt, OverviewMetrics Metrics, string CpuRateStatus, string NetworkRateStatus,
-    double? UptimeSeconds, LoadAverages? LoadAverage);
+    public required IReadOnlyList<FanReadout> Fans { get; init; }
+
+    public required IReadOnlyList<DiskReadout> Disks { get; init; }
+
+    public required MachineHistory History { get; init; }
+}
+
+internal sealed record HardwareProfile
+{
+    public string? Manufacturer { get; init; }
+
+    public string? Model { get; init; }
+
+    public required HardwareCpu Cpu { get; init; }
+
+    public required long OsVisibleMemoryBytes { get; init; }
+
+    public IReadOnlyList<MemoryModule>? MemoryModules { get; init; }
+}
+
+internal sealed record HardwareCpu
+{
+    public required string Architecture { get; init; }
+
+    public string? Model { get; init; }
+
+    public long? PhysicalCoreCount { get; init; }
+
+    public required long LogicalCpuCount { get; init; }
+}
+
+internal sealed record MemoryModule
+{
+    public required long CapacityBytes { get; init; }
+
+    public string? Type { get; init; }
+
+    public long? RatedSpeedMtPerSecond { get; init; }
+
+    public long? ConfiguredSpeedMtPerSecond { get; init; }
+}
+
+internal sealed record DiskHardware
+{
+    public required string Status { get; init; }
+
+    public long? CapacityBytes { get; init; }
+
+    public string? Model { get; init; }
+
+    public bool? Rotational { get; init; }
+}
+
+internal sealed record HostReadouts
+{
+    public required string Status { get; init; }
+
+    public DateTimeOffset? ObservedAt { get; init; }
+
+    public required OverviewMetrics Metrics { get; init; }
+
+    public required string CpuRateStatus { get; init; }
+
+    public required string NetworkRateStatus { get; init; }
+
+    public double? UptimeSeconds { get; init; }
+
+    public LoadAverages? LoadAverage { get; init; }
+}
 
 internal sealed record LoadAverages(double OneMinute, double FiveMinutes, double FifteenMinutes);
 
-internal sealed record FilesystemReadout(string Alias, string Status, DateTimeOffset? ObservedAt, long? TotalBytes, long? AvailableBytes);
+internal sealed record FilesystemReadout
+{
+    public required string Alias { get; init; }
 
-internal sealed record TemperatureReadout(string Alias, string Status, DateTimeOffset? ObservedAt, double? Celsius);
+    public required string Status { get; init; }
 
-internal sealed record FanReadout(string Alias, string Status, DateTimeOffset? ObservedAt, long? Rpm);
+    public DateTimeOffset? ObservedAt { get; init; }
+
+    public long? TotalBytes { get; init; }
+
+    public long? AvailableBytes { get; init; }
+}
+
+internal sealed record TemperatureReadout
+{
+    public required string Alias { get; init; }
+
+    public required string Status { get; init; }
+
+    public DateTimeOffset? ObservedAt { get; init; }
+
+    public double? Celsius { get; init; }
+}
+
+internal sealed record FanReadout
+{
+    public required string Alias { get; init; }
+
+    public required string Status { get; init; }
+
+    public DateTimeOffset? ObservedAt { get; init; }
+
+    public long? Rpm { get; init; }
+}
 
 internal sealed record DiskReadout(string Alias, DiskHardware? Hardware, SmartReadout Smart);
 
-internal sealed record SmartReadout(
-    string Status, DateTimeOffset? ObservedAt = null, long? TemperatureCelsius = null, bool? HealthPassed = null,
-    long? NvmePercentageUsed = null, long? NvmeMediaErrors = null, long? ReallocatedSectors = null,
-    long? PendingSectors = null, long? OfflineUncorrectableSectors = null);
+internal sealed record SmartReadout
+{
+    public required string Status { get; init; }
+
+    public DateTimeOffset? ObservedAt { get; init; }
+
+    public long? TemperatureCelsius { get; init; }
+
+    public bool? HealthPassed { get; init; }
+
+    public long? NvmePercentageUsed { get; init; }
+
+    public long? NvmeMediaErrors { get; init; }
+
+    public long? ReallocatedSectors { get; init; }
+
+    public long? PendingSectors { get; init; }
+
+    public long? OfflineUncorrectableSectors { get; init; }
+}

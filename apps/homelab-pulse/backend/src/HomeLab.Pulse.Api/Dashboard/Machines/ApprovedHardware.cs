@@ -47,9 +47,20 @@ internal sealed partial class ApprovedHardware
                 throw InvalidProfile();
             }
 
-            var profile = new HardwareProfile(Label(machine, "manufacturer"), Label(machine, "model"),
-                new HardwareCpu(Label(cpu, "architecture")!, Label(cpu, "model"), physical, logical),
-                Positive(memory, "osVisibleBytes")!.Value, ReadModules(memory));
+            var profile = new HardwareProfile
+            {
+                Manufacturer = Label(machine, "manufacturer"),
+                Model = Label(machine, "model"),
+                Cpu = new HardwareCpu
+                {
+                    Architecture = Label(cpu, "architecture")!,
+                    Model = Label(cpu, "model"),
+                    PhysicalCoreCount = physical,
+                    LogicalCpuCount = logical,
+                },
+                OsVisibleMemoryBytes = Positive(memory, "osVisibleBytes")!.Value,
+                MemoryModules = ReadModules(memory),
+            };
 
             var disks = new Dictionary<string, DiskHardware>(StringComparer.Ordinal);
             if (root.TryGetProperty("disks", out var entries))
@@ -63,8 +74,13 @@ internal sealed partial class ApprovedHardware
 
                     var disk = entry.Value;
                     var status = disk.GetProperty("status").GetString()!;
-                    disks.Add(entry.Name, new DiskHardware(status, Positive(disk, "capacityBytes"),
-                        Label(disk, "model"), Boolean(disk, "rotational")));
+                    disks.Add(entry.Name, new DiskHardware
+                    {
+                        Status = status,
+                        CapacityBytes = Positive(disk, "capacityBytes"),
+                        Model = Label(disk, "model"),
+                        Rotational = Boolean(disk, "rotational"),
+                    });
                 }
             }
 
@@ -89,9 +105,13 @@ internal sealed partial class ApprovedHardware
             throw InvalidProfile();
         }
 
-        return modules.EnumerateArray().Select(module => new MemoryModule(
-            Positive(module, "capacityBytes")!.Value, Label(module, "type"),
-            Positive(module, "ratedSpeedMtPerSecond"), Positive(module, "configuredSpeedMtPerSecond"))).ToArray();
+        return modules.EnumerateArray().Select(module => new MemoryModule
+        {
+            CapacityBytes = Positive(module, "capacityBytes")!.Value,
+            Type = Label(module, "type"),
+            RatedSpeedMtPerSecond = Positive(module, "ratedSpeedMtPerSecond"),
+            ConfiguredSpeedMtPerSecond = Positive(module, "configuredSpeedMtPerSecond"),
+        }).ToArray();
     }
 
     private static string? Label(JsonElement parent, string key)

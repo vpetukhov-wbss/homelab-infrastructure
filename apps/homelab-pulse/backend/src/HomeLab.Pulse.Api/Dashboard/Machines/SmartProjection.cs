@@ -66,7 +66,7 @@ internal sealed class SmartProjection(TelemetryDbContext database)
         var state = status.GetString();
         if (state == "unavailable")
         {
-            return (envelope, new SmartReadout("unavailable"));
+            return (envelope, new SmartReadout { Status = "unavailable" });
         }
 
         var instant = HostTelemetry.Property(reading, "observedAt");
@@ -77,17 +77,23 @@ internal sealed class SmartProjection(TelemetryDbContext database)
 
         if (state == "stale" || now - observedAt >= Freshness)
         {
-            return (observedAt, new SmartReadout("stale", observedAt));
+            return (observedAt, new SmartReadout { Status = "stale", ObservedAt = observedAt });
         }
 
         var temperature = HostTelemetry.Property(reading, "temperatureCelsius");
         var health = HostTelemetry.Property(reading, "healthPassed");
-        return (observedAt, new SmartReadout("available", observedAt,
-            temperature.ValueKind == JsonValueKind.Number && temperature.TryGetInt64(out var celsius) ? celsius : null,
-            health.ValueKind is JsonValueKind.True or JsonValueKind.False ? health.GetBoolean() : null,
-            HostTelemetry.Bytes(reading, "nvmePercentageUsed"), HostTelemetry.Bytes(reading, "nvmeMediaErrors"),
-            HostTelemetry.Bytes(reading, "reallocatedSectors"), HostTelemetry.Bytes(reading, "pendingSectors"),
-            HostTelemetry.Bytes(reading, "offlineUncorrectableSectors")));
+        return (observedAt, new SmartReadout
+        {
+            Status = "available",
+            ObservedAt = observedAt,
+            TemperatureCelsius = temperature.ValueKind == JsonValueKind.Number && temperature.TryGetInt64(out var celsius) ? celsius : null,
+            HealthPassed = health.ValueKind is JsonValueKind.True or JsonValueKind.False ? health.GetBoolean() : null,
+            NvmePercentageUsed = HostTelemetry.Bytes(reading, "nvmePercentageUsed"),
+            NvmeMediaErrors = HostTelemetry.Bytes(reading, "nvmeMediaErrors"),
+            ReallocatedSectors = HostTelemetry.Bytes(reading, "reallocatedSectors"),
+            PendingSectors = HostTelemetry.Bytes(reading, "pendingSectors"),
+            OfflineUncorrectableSectors = HostTelemetry.Bytes(reading, "offlineUncorrectableSectors"),
+        });
     }
 
     private sealed record SmartReport(long ObservedAtUtcTicks, string Readings);
