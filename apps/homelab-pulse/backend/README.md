@@ -130,3 +130,59 @@ directory private. Each successful publication has a higher revision, and a
 failed publication can leave gaps in the sequence. The API returns `503` before a
 snapshot is ready or when a failed refresh leaves a snapshot beyond its
 freshness deadline.
+
+## Machine details
+
+`GET /api/v1/machines/{alias}.json` accepts an exact public node alias from the
+Overview catalog. Unknown, retired and differently cased aliases return `404`.
+The response has `schemaVersion`, UTC `generatedAt` and a `machine` object
+containing approved hardware, host readouts, filesystems, temperature sensors,
+fans and physical disks. Configured readouts with missing values use `null`.
+Responses send `Cache-Control: no-store`.
+
+Use the agent's [local inventory command](../agent/README.md) to produce a
+[hardware profile](../contracts/hardware-profile.v1.schema.json). Review the
+labels and numeric values and keep the approved file outside the checkout in a
+private location readable by the API process. The configured profile explicitly
+approves the listed machine, CPU and memory fields. To withhold an optional
+field, remove it from the file. Review model labels for information that belongs
+in private inventory. The API validates the contract, checks field limits and
+rejects labels containing paths or recognizable addresses and identifiers.
+An invalid configured profile fails startup with an error that omits its content
+and path. With no profile configured, hardware is `null`.
+
+Here is an example for the synthetic `demo` node in the Overview setup.
+The file path is a placeholder. Leave it unset for live readouts without
+hardware inventory.
+
+```sh
+export Dashboard__PublicNodes__demo__Machine__HardwareProfilePath=/path/to/reviewed-demo-profile.json
+export Dashboard__PublicNodes__demo__Machine__IncludeUptime=true
+export Dashboard__PublicNodes__demo__Machine__IncludeLoad=true
+export Dashboard__PublicNodes__demo__Machine__Filesystems__system=agent-root
+export Dashboard__PublicNodes__demo__Machine__Temperatures__cpu-sensor=agent-cpu
+export Dashboard__PublicNodes__demo__Machine__Fans__cpu-fan=agent-fan
+export Dashboard__PublicNodes__demo__Machine__Disks__system-drive=agent-disk
+```
+
+The main host readouts reuse the Overview metric approvals. The machine-specific
+maps use a public alias as the key and the agent's collector alias as the value.
+Each map allows up to 16 entries. The disk map selects a physical disk from the
+hardware file and its corresponding SMART source. Disk capacity reported by
+inventory and filesystem capacity measured by the agent are separate fields.
+
+Host readouts, filesystem space and fast sensors use the host observation time
+and become stale at 90 seconds. Approved CPU and network rates start in
+`warm` until two compatible samples yield a rate. SMART uses the probe's own
+timestamp and becomes stale at three minutes, even when the next host sample
+still carries the cached SMART report. The projection compares SMART reports
+in the latest 64 committed host envelopes per node. A probe failure is explicit
+`unavailable`, and a stale observation retains its timestamp and drops its
+numeric values. Disk I/O, inodes and packet drops need corresponding fields in
+the agent's wire contract.
+
+The background worker builds machine snapshots from SQLite and replaces a
+private manifest atomically. Requests read the in-memory publication. Keep the
+state directory private and use the API routes to select published documents.
+The route returns `503` for a known alias while its snapshot is preparing or
+when a failed refresh leaves live readings past their freshness deadline.

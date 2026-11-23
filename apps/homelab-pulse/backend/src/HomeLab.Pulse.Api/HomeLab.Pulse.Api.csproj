@@ -6,5 +6,6 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
     <InternalsVisibleTo Include="HomeLab.Pulse.Api.IntegrationTests" />
     <EmbeddedResource Include="../../../contracts/telemetry-sample.v1.schema.json" LogicalName="Pulse.Telemetry.V1" />
+    <EmbeddedResource Include="../../../contracts/hardware-profile.v1.schema.json" LogicalName="Pulse.HardwareProfile.V1" />
   </ItemGroup>
 </Project>

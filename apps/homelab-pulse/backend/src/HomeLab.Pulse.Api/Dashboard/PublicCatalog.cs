@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace HomeLab.Pulse.Api.Dashboard.Overview;
+namespace HomeLab.Pulse.Api.Dashboard;
 
 [Flags]
 internal enum PublicMetric
@@ -35,9 +35,11 @@ internal sealed partial class PublicCatalog
 
     public IReadOnlyList<PublicNode> Nodes { get; }
 
+    internal static bool IsAlias(string alias) => AliasPattern().IsMatch(alias);
+
     private static PublicNode ReadNode(IConfigurationSection section)
     {
-        if (!AliasPattern().IsMatch(section.Key) || section["Alias"] is not { } alias || !AliasPattern().IsMatch(alias)
+        if (!IsAlias(section.Key) || section["Alias"] is not { } alias || !IsAlias(alias)
             || string.Equals(section.Key, alias, StringComparison.OrdinalIgnoreCase))
         {
             throw InvalidCatalog();
@@ -71,7 +73,7 @@ internal sealed partial class PublicCatalog
             return null;
         }
 
-        return section[key] is { } value && AliasPattern().IsMatch(value) ? value : throw InvalidCatalog();
+        return section[key] is { } value && IsAlias(value) ? value : throw InvalidCatalog();
     }
 
     private static InvalidOperationException InvalidCatalog() =>
