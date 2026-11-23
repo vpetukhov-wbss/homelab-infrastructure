@@ -186,3 +186,60 @@ private manifest atomically. Requests read the in-memory publication. Keep the
 state directory private and use the API routes to select published documents.
 The route returns `503` for a known alias while its snapshot is preparing or
 when a failed refresh leaves live readings past their freshness deadline.
+
+## Service details
+
+`GET /api/v1/services.json` returns `schemaVersion`, UTC `generatedAt` and
+`nodes`. Each node groups typed `postgresql`, `redis`, `rabbitmq` and `sqlite`
+entries by approved public alias. The service catalog is empty by default.
+
+Configure one public alias and one authoritative collector per logical service.
+`Node` is the exact public node alias from the Overview catalog. The selected
+agent sends one PostgreSQL, Redis or RabbitMQ probe per service kind. SQLite
+also requires `Source`, the private collector alias from the agent's SQLite
+configuration. The view uses only that reporter's observations for the service.
+Duplicate mappings to one collector are rejected. Keep source configuration private.
+
+```sh
+export Dashboard__PublicServices__demo-db__Node=demo-edge
+export Dashboard__PublicServices__demo-db__Kind=postgresql
+export Dashboard__PublicServices__demo-cache__Node=demo-edge
+export Dashboard__PublicServices__demo-cache__Kind=redis
+export Dashboard__PublicServices__demo-queue__Node=demo-edge
+export Dashboard__PublicServices__demo-queue__Kind=rabbitmq
+export Dashboard__PublicServices__demo-file__Node=demo-edge
+export Dashboard__PublicServices__demo-file__Kind=sqlite
+export Dashboard__PublicServices__demo-file__Source=agent-demo-file
+```
+
+Each entry shows `alias`, `status`, `observedAt` and `metrics`. Status is
+`unknown` before an eligible probe, `unavailable` after a fresh failed probe,
+`available` after a fresh successful probe and `stale` at 90 seconds from the
+probe time. Unsupported fields and non-current metrics are `null`. Measured
+zero is preserved, including zero queued messages, zero Redis operations per
+second and absent SQLite sidecars measured as zero bytes.
+
+- PostgreSQL returns database bytes, connected backends and standby status.
+  Transactions per second include commits and rollbacks. Buffer hit percent and
+  deadlocks in the window use changes in counters. The rate window requires
+  two distinct successful probes on the same agent boot, at most 90 seconds
+  apart, with the same recovery role and confirmed statistics reset timestamp.
+  A counter decrease invalidates the window. A zero buffer access delta leaves
+  the hit percentage unavailable.
+- Redis returns memory in bytes, the measured operations per second, clients and
+  optional AOF size. A zero memory limit means unlimited, so utilization percent
+  is unavailable. Hit percent and evictions use the deltas of the three
+  counters across two distinct successful probes on the same agent boot at
+  most 90 seconds apart. A decrease or failed probe breaks the window. The v1 wire contract has no Redis server lifetime identifier, so
+  a restart or failover that leaves all counters above their previous values
+  can escape reset detection.
+- RabbitMQ returns current counts for the selected queue. SQLite returns file
+  and sidecar sizes in bytes. A SQLite total inconsistent with its parts is
+  unavailable.
+
+The worker compares collector timestamps from up to 64 committed host envelopes
+per node. Cached copies with the same observation time count as one probe.
+It atomically replaces the services JSON in the private state directory before
+switching the in-memory publication. The public route sends
+`Cache-Control: no-store` and returns `503` until a snapshot is published or
+when a failed refresh leaves a snapshot past its freshness deadline.
