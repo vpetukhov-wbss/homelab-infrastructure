@@ -1,6 +1,7 @@
 using HomeLab.Pulse.Api.Dashboard;
 using HomeLab.Pulse.Api.Dashboard.Machines;
 using HomeLab.Pulse.Api.Dashboard.Overview;
+using HomeLab.Pulse.Api.Dashboard.Services;
 using HomeLab.Pulse.Api.Hosting;
 using HomeLab.Pulse.Api.Telemetry.Ingest;
 using HomeLab.Pulse.Api.Telemetry.Persistence;
@@ -40,6 +41,11 @@ builder.Services.AddSingleton<MachinePublication>();
 builder.Services.AddScoped<MachineProjection>();
 builder.Services.AddScoped<SmartProjection>();
 builder.Services.AddHostedService<MachineWorker>();
+builder.Services.AddSingleton<ServiceCatalog>();
+builder.Services.AddSingleton<ServicesPublication>();
+builder.Services.AddScoped<ServiceObservations>();
+builder.Services.AddScoped<ServicesProjection>();
+builder.Services.AddHostedService<ServicesWorker>();
 builder.Services.AddHealthChecks().AddCheck<TelemetryReadiness>("telemetry-storage", tags: ["ready"]);
 
 var app = builder.Build();
@@ -47,6 +53,7 @@ var app = builder.Build();
 _ = app.Services.GetRequiredService<AgentCredentials>();
 _ = app.Services.GetRequiredService<TelemetryValidator>();
 _ = app.Services.GetRequiredService<MachineCatalog>();
+_ = app.Services.GetRequiredService<ServiceCatalog>();
 await TelemetryDatabase.InitializeAsync(app.Services, app.Lifetime.ApplicationStopping);
 
 app.UseExceptionHandler();
@@ -63,5 +70,6 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapTelemetryIngest();
 app.MapDashboardOverview();
 app.MapDashboardMachine();
+app.MapDashboardServices();
 
 await app.RunAsync();

@@ -9,3 +9,5 @@ TestResults/
 *.overview.json.*.tmp
 *.machines.json
 *.machines.json.*.tmp
+*.services.json
+*.services.json.*.tmp
