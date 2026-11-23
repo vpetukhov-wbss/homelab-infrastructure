@@ -273,3 +273,36 @@ use fifteen minutes. An explicit stale result keeps its original timestamp
 and exposes `null` metrics. When these snapshot collectors report a failure with
 no timestamp, `observedAt` is `null` and the host envelope determines the age of
 that failure.
+
+## Public history
+
+`GET /api/v1/history/fleet/{window}.json` serves the fixed `1h`, `24h` and `7d`
+windows. Their UTC-aligned resolutions are respectively 2 minutes, 15 minutes
+and 1 hour, producing exactly 30, 96 and 168 points. Unknown windows return
+`404`. The public handler reads an in-memory, allowlisted snapshot and never
+queries SQLite. Responses use `Cache-Control: no-store`.
+
+Each point contains aggregate CPU and memory only when approved measurements
+exist. CPU is weighted by the reviewed logical CPU count in each participating
+machine's hardware profile. Memory is summed from measured used and total bytes.
+The `nodes` pulse lists only public aliases and reports `available` for an
+observed bucket or `missing` for a gap. A missing bucket is not converted to a
+zero. Counter decreases, boot changes and sample gaps over 90 seconds break CPU
+rate calculation rather than creating a misleading value.
+
+The history worker rebuilds the bounded series from committed SQLite samples at
+startup and every five minutes. It orders observations deterministically and
+therefore incorporates valid late arrivals on the next rebuild. Fleet files are
+atomically replaced before the in-memory response is switched. A failed refresh
+is retried at the next interval; the route returns `503` once its last successful
+snapshot is more than ten minutes old.
+
+The SQLite query ranks observations inside each requested bucket and reads at
+most the latest two. That bound protects the homelab's spinning disks while
+retaining the adjacent pair needed for a valid rate and deterministic latest
+reading. It does not load the seven-day raw telemetry set into memory.
+
+Machine details include the same bounded 1-hour history for that approved alias.
+The larger fleet windows stay on the dedicated history routes to keep each
+machine document small. The public history never includes agent IDs, boot IDs,
+sample IDs, raw counters or source selectors.

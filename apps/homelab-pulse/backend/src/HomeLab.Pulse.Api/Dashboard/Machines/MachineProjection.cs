@@ -1,5 +1,6 @@
 using System.Text.Json;
 using HomeLab.Pulse.Api.Dashboard.Overview;
+using HomeLab.Pulse.Api.Dashboard.History;
 using HomeLab.Pulse.Api.Telemetry.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,7 +8,10 @@ namespace HomeLab.Pulse.Api.Dashboard.Machines;
 
 internal sealed class MachineProjection(TelemetryDbContext database, MachineCatalog catalog, SmartProjection smart)
 {
-    public async Task<List<MachineDetails>> ReadAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task<List<MachineDetails>> ReadAsync(
+        DateTimeOffset now,
+        HistoryPublication history,
+        CancellationToken cancellationToken)
     {
         var machines = new List<MachineDetails>(catalog.Machines.Count);
         foreach (var approved in catalog.Machines)
@@ -26,60 +30,95 @@ internal sealed class MachineProjection(TelemetryDbContext database, MachineCata
             var earlierValues = earlier is null ? default : HostTelemetry.Property(earlier.RootElement, "values");
             var metrics = status != "available" ? new OverviewMetrics()
                 : HostTelemetry.ReadMetrics(approved.Node, values, earlierValues, HostTelemetry.Elapsed(current!, previous));
-            var host = new HostReadouts(status, observedAt, metrics,
-                RateStatus(status, approved.Node.Metrics.HasFlag(PublicMetric.Cpu), metrics.CpuUsagePercent.HasValue),
-                RateStatus(status, approved.Node.Metrics.HasFlag(PublicMetric.Network),
-                    metrics.NetworkRxBytesPerSecond.HasValue || metrics.NetworkTxBytesPerSecond.HasValue),
-                status == "available" && approved.IncludeUptime ? HostTelemetry.Number(values, "uptimeSeconds") : null,
-                status == "available" && approved.IncludeLoad ? ReadLoad(values) : null);
+            var observation = new MachineObservation(values, observedAt, status);
+            var host = new HostReadouts
+            {
+                Status = status,
+                ObservedAt = observedAt,
+                Metrics = metrics,
+                CpuRateStatus = RateStatus(hostStatus: status,
+                    selected: approved.Node.Metrics.HasFlag(PublicMetric.Cpu), present: metrics.CpuUsagePercent.HasValue),
+                NetworkRateStatus = RateStatus(hostStatus: status,
+                    selected: approved.Node.Metrics.HasFlag(PublicMetric.Network),
+                    present: metrics.NetworkRxBytesPerSecond.HasValue || metrics.NetworkTxBytesPerSecond.HasValue),
+                UptimeSeconds = status == "available" && approved.IncludeUptime ? HostTelemetry.Number(values, "uptimeSeconds") : null,
+                LoadAverage = status == "available" && approved.IncludeLoad ? ReadLoad(values) : null,
+            };
 
-            machines.Add(new MachineDetails(approved.Node.Alias, approved.Hardware, host,
-                ReadFilesystems(approved.Filesystems, values, observedAt, status),
-                ReadTemperatures(approved.Temperatures, values, observedAt, status),
-                ReadFans(approved.Fans, values, observedAt, status),
-                approved.Disks.Select(disk => new DiskReadout(disk.Alias, approved.DiskHardware.GetValueOrDefault(disk.Source),
-                    readings.GetValueOrDefault(disk.Source) ?? new SmartReadout("unavailable"))).ToArray()));
+            machines.Add(new MachineDetails
+            {
+                Alias = approved.Node.Alias,
+                Hardware = approved.Hardware,
+                Host = host,
+                Filesystems = ReadFilesystems(approved.Filesystems, observation),
+                Temperatures = ReadTemperatures(approved.Temperatures, observation),
+                Fans = ReadFans(approved.Fans, observation),
+                Disks = approved.Disks.Select(disk => new DiskReadout(disk.Alias, approved.DiskHardware.GetValueOrDefault(disk.Source),
+                    readings.GetValueOrDefault(disk.Source) ?? new SmartReadout { Status = "unavailable" })).ToArray(),
+                History = history.FindMachine(approved.Node.Alias) ?? EmptyHistory(),
+            });
         }
 
         return machines;
     }
 
     private static FilesystemReadout[] ReadFilesystems(
-        IReadOnlyList<MachineSource> sources, JsonElement values, DateTimeOffset? at, string status)
+        IReadOnlyList<MachineSource> sources,
+        MachineObservation observation)
     {
-        var filesystems = HostTelemetry.Property(values, "filesystems");
+        var filesystems = HostTelemetry.Property(observation.Values, "filesystems");
         return sources.Select(source =>
         {
             var reading = HostTelemetry.Property(filesystems, source.Source);
             var total = HostTelemetry.Bytes(reading, "totalBytes");
             var available = HostTelemetry.Bytes(reading, "availableBytes");
-            var state = total.HasValue && available.HasValue && available <= total ? status : "unavailable";
-            return new FilesystemReadout(source.Alias, state, Timestamp(state, at),
-                state == "available" ? total : null, state == "available" ? available : null);
+            var state = total.HasValue && available.HasValue && available <= total ? observation.Status : "unavailable";
+            return new FilesystemReadout
+            {
+                Alias = source.Alias,
+                Status = state,
+                ObservedAt = Timestamp(state, observation.ObservedAt),
+                TotalBytes = state == "available" ? total : null,
+                AvailableBytes = state == "available" ? available : null,
+            };
         }).ToArray();
     }
 
     private static TemperatureReadout[] ReadTemperatures(
-        IReadOnlyList<MachineSource> sources, JsonElement values, DateTimeOffset? at, string status)
+        IReadOnlyList<MachineSource> sources,
+        MachineObservation observation)
     {
-        var readings = HostTelemetry.Property(values, "temperaturesCelsius");
+        var readings = HostTelemetry.Property(observation.Values, "temperaturesCelsius");
         return sources.Select(source =>
         {
             var celsius = HostTelemetry.Number(readings, source.Source);
-            var state = celsius.HasValue ? status : "unavailable";
-            return new TemperatureReadout(source.Alias, state, Timestamp(state, at), state == "available" ? celsius : null);
+            var state = celsius.HasValue ? observation.Status : "unavailable";
+            return new TemperatureReadout
+            {
+                Alias = source.Alias,
+                Status = state,
+                ObservedAt = Timestamp(state, observation.ObservedAt),
+                Celsius = state == "available" ? celsius : null,
+            };
         }).ToArray();
     }
 
     private static FanReadout[] ReadFans(
-        IReadOnlyList<MachineSource> sources, JsonElement values, DateTimeOffset? at, string status)
+        IReadOnlyList<MachineSource> sources,
+        MachineObservation observation)
     {
-        var readings = HostTelemetry.Property(values, "fanSpeedsRpm");
+        var readings = HostTelemetry.Property(observation.Values, "fanSpeedsRpm");
         return sources.Select(source =>
         {
             var rpm = HostTelemetry.Bytes(readings, source.Source);
-            var state = rpm.HasValue ? status : "unavailable";
-            return new FanReadout(source.Alias, state, Timestamp(state, at), state == "available" ? rpm : null);
+            var state = rpm.HasValue ? observation.Status : "unavailable";
+            return new FanReadout
+            {
+                Alias = source.Alias,
+                Status = state,
+                ObservedAt = Timestamp(state, observation.ObservedAt),
+                Rpm = state == "available" ? rpm : null,
+            };
         }).ToArray();
     }
 
@@ -93,8 +132,12 @@ internal sealed class MachineProjection(TelemetryDbContext database, MachineCata
             ? new LoadAverages(one, five, fifteen) : null;
     }
 
-    private static string RateStatus(string host, bool selected, bool present) =>
-        !selected ? "unavailable" : host != "available" ? host : present ? "available" : "warm";
+    private static string RateStatus(string hostStatus, bool selected, bool present) =>
+        !selected ? "unavailable" : hostStatus != "available" ? hostStatus : present ? "available" : "warm";
 
     private static DateTimeOffset? Timestamp(string status, DateTimeOffset? at) => status == "unavailable" ? null : at;
+
+    private static MachineHistory EmptyHistory() => new("1h", 120, []);
+
+    private sealed record MachineObservation(JsonElement Values, DateTimeOffset? ObservedAt, string Status);
 }

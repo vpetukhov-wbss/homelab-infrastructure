@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HomeLab.Pulse.Api.Dashboard.History;
 using Microsoft.Data.Sqlite;
 
 namespace HomeLab.Pulse.Api.Dashboard.Machines;
@@ -18,7 +19,8 @@ internal sealed partial class MachineWorker(
             {
                 var now = clock.GetUtcNow();
                 await using var scope = scopes.CreateAsyncScope();
-                var machines = await scope.ServiceProvider.GetRequiredService<MachineProjection>().ReadAsync(now, stoppingToken);
+                var machines = await scope.ServiceProvider.GetRequiredService<MachineProjection>().ReadAsync(
+                    now, scope.ServiceProvider.GetRequiredService<HistoryPublication>(), stoppingToken);
                 await publication.PublishAsync(machines, now, stoppingToken);
             }
             catch (Exception error) when (error is SqliteException or IOException or UnauthorizedAccessException or JsonException)

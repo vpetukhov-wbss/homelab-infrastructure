@@ -1,4 +1,5 @@
 using HomeLab.Pulse.Api.Dashboard;
+using HomeLab.Pulse.Api.Dashboard.History;
 using HomeLab.Pulse.Api.Dashboard.Machines;
 using HomeLab.Pulse.Api.Dashboard.Overview;
 using HomeLab.Pulse.Api.Dashboard.Services;
@@ -46,6 +47,9 @@ builder.Services.AddSingleton<ServicesPublication>();
 builder.Services.AddScoped<ServiceObservations>();
 builder.Services.AddScoped<ServicesProjection>();
 builder.Services.AddHostedService<ServicesWorker>();
+builder.Services.AddSingleton<HistoryPublication>();
+builder.Services.AddScoped<HistoryProjection>();
+builder.Services.AddHostedService<HistoryWorker>();
 builder.Services.AddHealthChecks().AddCheck<TelemetryReadiness>("telemetry-storage", tags: ["ready"]);
 
 var app = builder.Build();
@@ -71,5 +75,6 @@ app.MapTelemetryIngest();
 app.MapDashboardOverview();
 app.MapDashboardMachine();
 app.MapDashboardServices();
+app.MapDashboardHistory();
 
 await app.RunAsync();
