@@ -1,6 +1,7 @@
 # Security Posture
 
-> **Status:** verified by direct inspection, last updated **2026-11-21**. Every control
+> **Status:** verified by direct inspection, last updated **2026-11-21** (node4:
+> **2026-11-24**). Every control
 > below was checked against the running systems, not against the Ansible roles that are
 > supposed to produce them. The two had diverged more than once — see
 > [the overlay binding that protected nothing](#the-overlay-binding-that-protected-nothing)
@@ -18,10 +19,12 @@ What each machine listens on, and from where it can be reached.
 | node1-gateway | 2222 SSH (LAN subnet + legacy `wg0` only), 80, 443 Caddy | 2022 SFTP, 8200 Vault, 26379 Sentinel, 5672 + 15672 RabbitMQ | — |
 | node2-data-replica | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel | — |
 | node3-data | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel, 8080 nginx, 3000 + 2223 Gitea | — |
-| laptop | 2345 SSH | — | — |
+| node4 (laptop) | 2345 SSH from any source, including the router forward; no firewall | — (not on `wg1` yet) | — |
 
-The laptop is about to be reinstalled as `node4`; its row will change. Until then it is
-a desktop with `ufw` inactive and is not part of these guarantees.
+node4 was reinstalled on 2026-11-22 and has not been converged. `ufw` is installed but
+disabled, Fail2Ban is absent, and the overlay guard is not installed, so it has no
+unreachable route for `10.44.0.0/24` either. sshd offers `publickey` only (probed on
+2026-11-23). node4 is outside the guarantees below until roadmap M3.
 
 ## The overlay guard — the control that actually keeps services private
 
@@ -68,7 +71,7 @@ and `wg1` — never "Anywhere" — so an accidental router forward cannot expose
 ### Ansible verifies host keys
 
 `host_key_checking = True`. Keys are pinned in `~/.ssh/known_hosts` under the inventory
-name (`HostKeyAlias`), so node1 drifting between DHCP leases does not break
+name (`HostKeyAlias`), so node1 answering on two addresses does not break
 verification. The pinned keys were checked against each host's own key file over an
 authenticated session, and a deliberately wrong key is refused
 (`REMOTE HOST IDENTIFICATION HAS CHANGED`).
@@ -114,7 +117,8 @@ held passwords at `0644` (the old single-file Redis and Sentinel configs) were r
 
 ### Fail2Ban
 
-sshd jail active on every machine, banning through `ufw`. `ignoreip` is loopback, the
+sshd jail active on node1–3, banning through `ufw`. node4 had one before its reinstall
+and does not yet. `ignoreip` is loopback, the
 overlay and the controller's own address — **not** the whole LAN, which is hostile and
 must be bannable. The role fails the play if that policy does not hold.
 
@@ -147,9 +151,9 @@ root through the `docker` group — so root on node1 meant root on node3.
 | **Backup key next to the archives** | Whoever takes node1's disk can decrypt its archives | Encrypt to an `age` public key; keep the identity offline |
 | **No off-site backup** | Both copies are in the same building | Weekly copy off site |
 | **`docker` group = root** | The admin SSH key alone is root on every node | Move compose tasks to `become`, drop the group |
-| **Laptop SSH is Internet-forwarded** | The one genuinely public attack surface | Remove the forward; use WireGuard for remote access |
-| **Legacy `wg0` on node1 and the laptop** | Two never-used tunnels, same address, open port | Decide on one remote-access design; remove the other |
-| **Single reused sudo password** | One password for every node | Per-host passwords, kept in Vault (initialised, still empty) |
+| **node4 SSH is Internet-forwarded, with no firewall or Fail2Ban since its reinstall** | The one genuinely public attack surface; only key-only auth stands in front of it | M3: `ufw` and Fail2Ban on node4; M4: remove the forward, use WireGuard for remote access |
+| **Legacy `wg0` on node1 (and node4's restored copy)** | node1: an open port and a tunnel with one SSH login in the journal (2026-05-07) and no handshake since the 2026-11-21 boot. node4: the config was restored to `/etc/wireguard/restored-from-laptop/` and is inactive | Decide on one remote-access design; remove the other |
+| **Reused sudo password** | node1–3 share one sudo password (node4 has its own) | Per-host passwords, kept in Vault (initialised, still empty) |
 | **PostgreSQL superuser over the overlay** | Every user incl. superuser may connect from `10.44.0.0/24` | A `pg_read_all_data` role for backups; superuser local-only |
 | **End-of-life versions** | Gitea 1.22, RabbitMQ 3.13 no longer receive fixes | Planned upgrades, after a backup |
 

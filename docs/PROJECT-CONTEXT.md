@@ -5,7 +5,7 @@
 > but *why it is the way it is*, including the compromises, the decisions that were
 > reversed, and the traps that cost real debugging time.
 >
-> Last verified against the running systems: **2026-11-21**.
+> Last verified against the running systems: **2026-11-21**; node4 on **2026-11-24**.
 >
 > [`docs/architecture/overview.md`](architecture/overview.md) describes the topology.
 > [`docs/security/posture.md`](security/posture.md) records verified security controls.
@@ -43,8 +43,8 @@ table before proposing anything.
 | RAM | 3738 MB | 3742 MB | 3769 MB | 7304 MB |
 | Disk | Seagate ST3250312AS 233 G **HDD** | WD WD2500AAKX 233 G **HDD** | WD WD5000AAKX 466 G **HDD** | Samsung MZ7LN256 238 G **SSD** |
 | Root filesystem | 227 G | 227 G | 456 G | 233 G |
-| OS | Ubuntu 22.04.5 | Ubuntu **24.04.5** | Ubuntu 22.04.5 | Ubuntu **26.04** |
-| Kernel | 5.15.0-204 | 6.8.0-149 | 5.15.0-181 | 7.0.0-43 |
+| OS | Ubuntu 22.04.5 | Ubuntu **24.04.5** | Ubuntu 22.04.5 | Ubuntu **26.04.1** |
+| Kernel | 5.15.0-204 | 6.8.0-149 | 5.15.0-181 | 7.0.0-30 (-44 installed, reboot pending) |
 | NIC | `eno1`, wired | `eno1`, wired | `enp0s25`, wired | `wlp5s0` **Wi-Fi** (`enp0s31f6` unplugged) |
 | LAN | 192.168.0.101 **and** .23 | 192.168.0.28 | 192.168.0.103 | 192.168.0.35 |
 | Overlay | 10.44.0.1 | 10.44.0.2 | 10.44.0.3 | *(none — see §9)* |
@@ -66,13 +66,16 @@ Four facts from that table drive almost every decision:
    a full enterprise stack.
 3. **Mixed OS versions, deliberately.** 22.04, 24.04 and 26.04 coexist. Nothing is
    reinstalled to align a version number.
-4. **The laptop was not a server — that decision was reversed on 2026-11-21.** It is
-   being reinstalled headless as `node4` (Ubuntu Server 26.04.1, Wi-Fi, suspend and lid
-   switch disabled) and will be both a server and the controller. It is the **only
+4. **The laptop was not a server — that decision was reversed on 2026-11-21.** It was
+   reinstalled headless as `node4` on 2026-11-22 (Ubuntu Server 26.04.1, Wi-Fi, suspend
+   and lid switch disabled) and is the controller again; it becomes a server in roadmap
+   M3. It is the **only
    machine with AVX**, which MongoDB 5.0+ requires; the Pentium G620/G630 and the Core 2
    Duo do not have it. See `installer/README.md`.
 
-Note `node1` holds **two DHCP leases on one NIC** (.101 and .23). This has caused
+Note `node1` holds **two addresses on one NIC**: .101 is static
+(`/etc/netplan/00-installer-config.yaml`) and .23 is a DHCP lease, because
+`50-cloud-init.yaml` still sets `dhcp4: true` on the same interface. This has caused
 confusion before — it is one machine, not two.
 
 ---
@@ -138,7 +141,8 @@ The bind address still matters — it keeps ports off `0.0.0.0` — and the `app
 inside the ISP's network. Without `wg1`, traffic for the overlay would follow the
 default route there (Redis `AUTH` is clear text). The guard unit therefore also
 installs `unreachable 10.44.0.0/24 metric 4000`; `wg1`'s route wins whenever it is up.
-A machine that is not on the overlay (today: the laptop) must not talk to `10.44.0.x`.
+A machine that is not on the overlay (today: node4) must not talk to `10.44.0.x`, and
+node4 has neither `wg1` nor the guard's unreachable route yet.
 
 ### Edge
 
@@ -152,7 +156,7 @@ Internet → router → node1:80/443 (Caddy)
 ```
 
 **No router port-forward to node1 exists yet**, so this is LAN-reachable only. The one
-genuinely Internet-facing port today is SSH on the laptop (2345).
+genuinely Internet-facing port today is SSH on node4 (2345).
 
 ---
 
@@ -375,6 +379,21 @@ it down, run `clear`, and reply with "done" only.
   at, read `nmcli -f ipv4.method,ipv4.addresses …`; node4's stick pins the address.
 - **`gitea dump` aborts on an instance with no repositories yet**
   (`open /data/git/repositories`); create the directory first.
+- **A rebuild restores the controller, not the host's controls.** `homelab-restore`
+  brought back node4's keys, vault password, repository and inventory, and every
+  document still said "Fail2Ban on all four". On the new install ufw was disabled and
+  Fail2Ban absent, because `security.yml` targets only the three servers and nothing had
+  converged node4. After any rebuild, check the controls themselves (`ufw status`,
+  `fail2ban-client status`), not the documents.
+- **Every SSH session into node4 died with its connection, and Claude Code with it.**
+  All nine sessions that ended between 2026-11-22 and 2026-11-24 ended with
+  `Connection timed out` in sshd's journal; the owner closed none of them. sshd sent no
+  keepalive (30 s since 2026-11-24), but the last one dropped 23 s after activity, so an
+  idle NAT timeout does not explain them all and the cause on the path is not established. The fix does not
+  depend on it: logins attach to a tmux session on node4 (role `persistent_session`),
+  verified by killing a real connection under a running process. tmux runs its panes
+  under the user manager, so the role also enables linger. A reboot still ends it;
+  `claude --continue` resumes the conversation.
 
 ### Toolchain mechanics
 
@@ -454,11 +473,16 @@ the relocation reverted.
   node3**. A full restore drill of the new archive format has not been done yet.
 - Key-only SSH, X11/agent forwarding off, SSH accepted from the LAN subnet and `wg1` only.
   Ansible verifies host keys.
-- Fail2Ban on all four; only loopback, overlay and the controller are exempt.
+- Fail2Ban on the three servers; only loopback, overlay and the controller are exempt.
+  node4 had it before its reinstall and does not yet (see Outstanding).
 - smartd on every server (all three HDDs PASSED, 0 reallocated/pending sectors);
   watchdog active on all three; Docker log rotation and `live-restore`; Docker starts
   after `wg1`. Every image pinned (`inventory/group_vars/all/images.yml`).
 - node1 rebooted onto kernel -204 and came back on its own with everything above intact.
+- **node4 reinstalled on 2026-11-22** (verified 2026-11-23): Ubuntu Server 26.04.1,
+  Wi-Fi on its old static address, sshd on 2345 offering `publickey` only, suspend,
+  hibernate and the lid switch disabled. `homelab-restore` ran: from node4
+  `ansible homelab -m ping` passes for all four and both ansible-vault files open.
 
 ### Outstanding
 
@@ -468,15 +492,15 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **Laptop reinstall as node4** | Ready since 2026-11-21: homelab password set, bundle rebuilt, stick written and read back (Wi-Fi pinned to the laptop's old static address and SSH kept on 2345, so the router's forward — the owner's only remote path — keeps working; bundle + `homelab-restore`). Waiting on the owner: copy the bundle off the laptop, save personal data, install (username `vpetukhov`, the current sudo password), then `sudo homelab-restore`. |
+| **node4 converged (roadmap M3)** | Reinstalled and restored 2026-11-22, but nothing has converged it: ufw is installed and disabled, Fail2Ban, Docker and `wg1` are absent, and so is the overlay guard with its unreachable route. Its SSH (2345, key-only) is Internet-forwarded with no firewall in front. Kernel -44 waits for a reboot. SSH from outside through the router works (2026-11-24). |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | Planned on node4. |
 
 ### The single largest risk
 
-**The laptop is a single point of failure for the entire platform.** These exist
-nowhere else:
+**node4 (the controller) is a single point of failure for the entire platform.** These
+exist nowhere else but on it and in the encrypted recovery bundle:
 
 ```
 ~/.ssh/homelab-controller     the only key with access to all three servers
@@ -496,7 +520,9 @@ vanished with the next reboot. **Never put anything that must survive in `/tmp`.
 bundle is now produced by `scripts/make-recovery-bundle.sh` into `~/homelab-recovery/`,
 sealed with the homelab password (`scripts/set-homelab-password.sh` lets the user pick
 one they can remember), and the node4 installer stick carries it together with
-`homelab-restore`. Copying it off the laptop is still the user's step.
+`homelab-restore`. The reinstall used it on 2026-11-22. node4 itself no longer has
+`~/homelab-recovery/`, so the stick, and any copy the owner made, is the controller's
+only backup.
 
 ---
 
@@ -519,7 +545,8 @@ $V/ansible-playbook playbooks/app-host.yml      # node3
 $V/ansible-playbook playbooks/rabbitmq.yml      # node1
 $V/ansible-playbook playbooks/gitea.yml         # node3
 $V/ansible-playbook playbooks/sftp-mirror.yml   # node3 sync account + exports, then node1 mirror
-$V/ansible-playbook playbooks/backup.yml        # last: snapshots what the others create
+$V/ansible-playbook playbooks/backup.yml        # after every service: snapshots what they create
+$V/ansible-playbook playbooks/controller.yml    # node4: tmux session that outlives a connection
 ```
 
 On a machine built from scratch the order matters: node3's exports snapshot Gitea and

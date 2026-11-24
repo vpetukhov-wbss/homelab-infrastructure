@@ -1,0 +1,7 @@
+---
+# The controller's own environment (node4). User-level: needs no become password.
+- name: Terminal session that survives a dropped SSH connection
+  hosts: controller
+  gather_facts: true
+  roles:
+    - persistent_session

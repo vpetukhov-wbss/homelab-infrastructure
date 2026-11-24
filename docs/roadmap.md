@@ -1,6 +1,6 @@
 # Roadmap
 
-> Last updated **2026-11-21**. A box is ticked only when the result was verified on the
+> Last updated **2026-11-24**. A box is ticked only when the result was verified on the
 > running systems, not when the code exists. Evidence for the ticked items is in
 > [`PROJECT-CONTEXT.md` §9](PROJECT-CONTEXT.md#9-current-state).
 
@@ -24,7 +24,7 @@ One owner, four machines:
 | node1 | Caddy, Vault, SFTP, RabbitMQ, Sentinel, backup job | + WireGuard endpoint for remote access, TLS at the edge |
 | node2 | PostgreSQL primary, Redis, Sentinel | unchanged |
 | node3 | PostgreSQL standby, Redis, Sentinel, app host, Gitea + runner, SFTP mirror, backup copy | unchanged |
-| node4 | the laptop: controller on Wi-Fi, not on the overlay | headless server on `wg1` (10.44.0.4): controller + MongoDB 8, Vaultwarden, LocalStack, monitoring |
+| node4 | reinstalled headless 2026-11-22: controller on Wi-Fi, not converged, not on the overlay | headless server on `wg1` (10.44.0.4): controller + MongoDB 8, Vaultwarden, LocalStack, monitoring |
 
 **Why node4 gets the new services.** It has the only CPU with AVX, which MongoDB 5.0+
 requires. It also has the only SSD and the most RAM (7.3 GB). CI stays on node3 so that
@@ -83,7 +83,8 @@ the password manager never shares a host with CI jobs.
   (`homelab-recovery-20261121-1821.tar.gpg`, rebuilt after the Vault work and the VM test). Verified: it opens with the new password
   (119 entries) and includes the GitHub deploy key and the laptop's `/etc/wireguard`.
   The old bundle was deleted.
-- [ ] The owner copies the bundle off the laptop, together with `RESTORE.txt`.
+- [ ] The owner keeps a copy of the bundle, with `RESTORE.txt`, somewhere other than the
+  stick. node4 no longer has `~/homelab-recovery/`, so the stick may be the only copy.
 - [x] The installer stick was rebuilt and verified on 2026-11-21. It carries Wi-Fi, SSH
   on 2345 and the bundle, with the three fixes found by the VM test. Its
   `homelab-restore` also fast-forwards the repository from GitHub, so commits pushed
@@ -112,14 +113,19 @@ the password manager never shares a host with CI jobs.
   serial. It went through GRUB and the Profile configuration screen to the "Confirm
   destructive action" dialog (default No); nothing was written to the disk. Joining the
   Wi-Fi with the static address has not run on the real hardware yet.
-- [ ] The owner saves personal data that the bundle does not carry.
-- [ ] Install, then run `sudo homelab-restore`.
+- [x] Installed on 2026-11-22 (14:23 UTC), then `sudo homelab-restore` (14:25–14:30).
+  Verified on 2026-11-23: Ubuntu 26.04.1, the Wi-Fi on 192.168.0.35, sshd on 2345 offering
+  `publickey` only, suspend and the lid switch disabled.
+- [x] SSH into node4 from outside, through the router. Verified on 2026-11-24 in sshd's
+  journal: nine logins with the owner's workstation key from one public address between
+  2026-11-22 and 2026-11-24. Unrelated Internet scanners reach sshd through the same
+  forward.
 
 **Done when:**
 
 - from node4, `ansible homelab -m ping` passes with the pinned host keys and the vault
-  opens;
-- the owner can still SSH in from outside.
+  opens (**passes**, 2026-11-23: all four machines, both vault files);
+- the owner can still SSH in from outside (**passes**, 2026-11-24).
 
 ## M3 — node4 joins the platform
 
@@ -137,7 +143,21 @@ the password manager never shares a host with CI jobs.
 - [ ] Keep node4's SSH reachable from outside until M4 is done. Until `ufw` and
   `fail2ban` are applied, node4 is a bare key-only sshd on a port that is probed from the
   Internet.
-- [ ] Docker on node4; Wi-Fi power saving off.
+- [ ] Docker on node4; Wi-Fi power saving off. `base.yml` installs Docker on node2 only
+  today.
+- [x] A become password for node4 (2026-11-24). The `ansible_become_pass` in
+  `group_vars/homelab/vault.yml` is node1–3's and fails on node4 (verified 2026-11-23,
+  with both `sudo-rs` 0.2.13, the 26.04 default, and the classic `sudo.ws`). node4's own
+  is in `inventory/host_vars/node4-laptop/vault.yml` (ansible-vault, git-ignored); from
+  node4, `ansible node4-laptop -b` becomes root.
+- [x] The owner's terminal survives a dropped connection (2026-11-24): role
+  `persistent_session`, plus the sshd keepalive (30 s) on node4, checked with `sshd -T`.
+- [ ] Make the `wireguard` role ready for a fourth peer that connects locally:
+  - the `Endpoint` comes from `ansible_host`, which node4 does not have;
+  - the handler restarts `wg1` on every peer whenever a peer is added. A reload
+    (`wg syncconf`) adds node4 without dropping the tunnels under PostgreSQL and Redis.
+- [ ] Reboot node4 onto kernel -44 (a reboot has been pending since 2026-11-23). It also
+  proves that `ufw`, Fail2Ban, `wg1` and the guard come back on their own.
 
 **Done when:**
 

@@ -54,7 +54,8 @@ instead of trusting names.
 | `rabbitmq.yml` | node1 | `rabbitmq` | |
 | `gitea.yml` | node3 | `gitea` | Registers the runner and waits until it is declared |
 | `sftp-mirror.yml` | node3; node1 | `node_exports`; `sftp_mirror` | Sync account and exports first, then the mirror (needs `edge.yml`) |
-| `backup.yml` | node1 | `backup` | Runs last: it snapshots what the others created |
+| `backup.yml` | node1 | `backup` | Runs after every service: it snapshots what they created |
+| `controller.yml` | node4 | `persistent_session` | User-level, needs no become password |
 
 On a machine built from scratch, this order matters. node3's exports snapshot Gitea and
 the app host's SQLite, and the backup pulls those exports.
@@ -81,6 +82,7 @@ the app host's SQLite, and the backup pulls those exports.
 | `rabbitmq` | RabbitMQ 3.13 + management UI, on the overlay only, with an absolute memory cap |
 | `gitea` | Gitea + act_runner. Jobs run without the Docker socket and with CPU/RAM/PID caps |
 | `backup` | See [`backup`](#backup) below |
+| `persistent_session` | On node4: every interactive SSH login attaches to the tmux session `main`, which outlives the connection. Asserts that logind does not kill it |
 
 ### `host_hardening`
 
