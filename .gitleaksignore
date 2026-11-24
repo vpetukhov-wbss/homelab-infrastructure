@@ -1,3 +1,5 @@
 # gitleaks findings reviewed and accepted. One fingerprint per line.
 # Prose in a skill file ("...TLS/auth, container privilege..."), not a credential; reviewed 2026-11-21.
 4c51f216e5cd3e30bde96bd4136ee1c718f5b465:.claude/skills/security-review/SKILL.md:generic-api-key:6
+# Example ingest URL on a reserved .invalid host ("pulse-api..."), not a credential; reviewed 2026-11-24.
+7cda9d94e7421b508e69476c2d9332783b6d637c:apps/homelab-pulse/agent/config.example.ini:generic-api-key:2
