@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -177,22 +176,8 @@ public sealed class IngestTests : IDisposable
         await using var app = new PulseApiFactory(DatabasePath);
         app.UseKestrel(0);
         using var client = app.CreateClient();
-        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "send_sample.py");
-        using var encoder = Process.Start(new ProcessStartInfo("python3")
-        {
-            ArgumentList = { "-B", "-E", "-s", fixturePath, new Uri(client.BaseAddress!, IngestPath).AbsoluteUri },
-            Environment = { ["PULSE_TEST_BEARER"] = PulseApiFactory.AgentToken },
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        }) ?? throw new InvalidOperationException("Could not start the Python encoder.");
-
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var pythonPayload = encoder.StandardOutput.ReadToEndAsync(deadline.Token);
-        var errors = encoder.StandardError.ReadToEndAsync(deadline.Token);
-        await encoder.WaitForExitAsync(deadline.Token);
-        Assert.True(encoder.ExitCode == 0, await errors);
-        var payload = await pythonPayload;
+        var payload = await PythonAgentFixture.SendAsync(client.BaseAddress!, deadline.Token);
         using var document = JsonDocument.Parse(payload);
         var observedAt = document.RootElement.GetProperty("observedAt").GetDateTimeOffset();
         await using var database = PulseApiFactory.Connect(DatabasePath);

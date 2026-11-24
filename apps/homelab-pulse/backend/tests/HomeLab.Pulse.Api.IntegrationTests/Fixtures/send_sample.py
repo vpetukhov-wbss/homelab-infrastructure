@@ -1,5 +1,7 @@
 """Send a synthetic sample using the agent's production encoder and HTTP transport."""
 
+from dataclasses import replace
+from datetime import datetime
 import os
 import sys
 
@@ -16,7 +18,10 @@ values = {
     "network": {},
     "temperaturesCelsius": {},
 }
-payload = Sample.host(values).encode()
+sample = Sample.host(values)
+if len(sys.argv) > 2:
+    sample = replace(sample, observed_at=datetime.fromisoformat(sys.argv[2]))
+payload = sample.encode()
 transport = Transport(sys.argv[1], os.environ["PULSE_TEST_BEARER"], timeout=5)
 if transport.send(payload) is not Outcome.ACK:
     raise SystemExit("The receiver did not acknowledge the agent sample.")

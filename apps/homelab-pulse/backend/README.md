@@ -131,6 +131,25 @@ failed publication can leave gaps in the sequence. The API returns `503` before 
 snapshot is ready or when a failed refresh leaves a snapshot beyond its
 freshness deadline.
 
+## Realtime overview
+
+Connect to the anonymous SignalR hub at `/hubs/pulse`. `TelemetryUpdated`
+delivers one overview snapshot with the same fields as
+`GET /api/v1/overview.json`, including its persisted `revision`. The publisher
+queues it only after replacing the JSON file and making the snapshot available
+to REST. The broadcast worker keeps at most one pending snapshot so a slow
+connection cannot hold up publication.
+
+1. Register the event handler, connect to the hub, and fetch the overview JSON.
+2. Apply a snapshot from either source only if its revision is newer than the
+   last one applied. Repeat the GET whenever the connection recovers.
+3. Retry the GET if it returns `503` while the API rebuilds. A delayed or missed
+   event can be recovered by fetching the latest snapshot.
+
+Broadcasts are best effort. Revisions can have gaps and keep increasing across
+restarts of the same SQLite database. The hub carries the overview only.
+Machine, service and history details are fetched from their REST routes.
+
 ## Machine details
 
 `GET /api/v1/machines/{alias}.json` accepts an exact public node alias from the

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HomeLab.Pulse.Api.Dashboard.Realtime;
 using HomeLab.Pulse.Api.Telemetry.Persistence;
 
 namespace HomeLab.Pulse.Api.Dashboard.Overview;
@@ -14,7 +15,7 @@ internal sealed record PublishedOverview
     public DateTimeOffset? RefreshDeadline { get; init; }
 }
 
-internal sealed class OverviewPublication(TelemetryStorageSettings storage)
+internal sealed class OverviewPublication(TelemetryStorageSettings storage, PulseBroadcastWorker broadcasts)
 {
     private readonly string _path = storage.DatabasePath + ".overview.json";
     private PublishedOverview? _current;
@@ -36,5 +37,6 @@ internal sealed class OverviewPublication(TelemetryStorageSettings storage)
         };
         await DashboardSnapshotFile.ReplaceAsync(_path, json, cancellationToken);
         Volatile.Write(ref _current, published);
+        broadcasts.Publish(snapshot);
     }
 }
