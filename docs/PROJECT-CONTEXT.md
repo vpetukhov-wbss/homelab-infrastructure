@@ -394,6 +394,15 @@ it down, run `clear`, and reply with "done" only.
   `--entrypoint mongodump`. `--quiet` hides the error as well.
 - **A container on node4's bridge cannot reach `10.44.0.4`**: it arrives in INPUT from the
   bridge, and ufw admits only `wg1` and loopback.
+- **Wi-Fi power saving lost 37-42% of the packets sent to an idle node4**, and none
+  outbound, so every test started from node4 looked healthy. Measured 2026-11-24 from
+  node1 and node2, 1 s apart; with node4's radio kept busy the loss was 0 of 40. Off since
+  then (role `wifi_power_save`): 0 of 60 from each, 3 ms instead of 37-54. Measure from
+  the other end, and with a quiet radio: faster pings hide it.
+- **`rabbitmqctl` before the first start breaks the broker.** Run as root in a new
+  container, it creates the Erlang cookie itself and the server then cannot read it. Wait
+  for port 5672 first. Reading standard input (`import_definitions`, `authenticate_user`)
+  it waits forever through `docker exec -i`; give it a file.
 - **systemd's sandboxing is ignored without an error in user units on node4.**
   `systemd-run --user -p ProtectHome=tmpfs` left `~/.ssh` readable, because Ubuntu
   restricts unprivileged user namespaces. Only a system unit isolates; prove it by testing
@@ -409,7 +418,8 @@ it down, run `clear`, and reply with "done" only.
   All nine sessions that ended between 2026-11-22 and 2026-11-24 ended with
   `Connection timed out` in sshd's journal; the owner closed none of them. sshd sent no
   keepalive (30 s since 2026-11-24), but the last one dropped 23 s after activity, so an
-  idle NAT timeout does not explain them all and the cause on the path is not established. The fix does not
+  idle NAT timeout does not explain them all and the cause on the path is not established
+  (the Wi-Fi power saving below is a candidate, not proven). The fix does not
   depend on it: logins attach to a tmux session on node4 (role `persistent_session`),
   verified by killing a real connection under a running process. tmux runs its panes
   under the user manager, so the role also enables linger. A reboot still ends it;
@@ -490,7 +500,8 @@ the relocation reverted.
   access with the key refused.
 - Nightly encrypted backups: PostgreSQL (+ roles), Redis, RabbitMQ definitions, SQLite,
   **Gitea dump**, **SFTP tree**, **node1's WireGuard config**; verified, then **copied to
-  node3**. A full restore drill of the new archive format has not been done yet.
+  node3**. Restored in full on 2026-11-24 on node4, from node3's copy
+  (`playbooks/restore-drill.yml`); production data is still tiny, Redis and Gitea are empty.
 - Key-only SSH, X11/agent forwarding off, SSH accepted from the LAN subnet and `wg1` only.
   Ansible verifies host keys.
 - Fail2Ban on all four; only loopback, overlay and the controller are exempt.
@@ -513,9 +524,11 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. `wg1` joined the same day. `base`, `host_hardening` and Docker followed. Still to do: Wi-Fi power saving and the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
+| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. `wg1` joined the same day. `base`, `host_hardening` and Docker followed. Wi-Fi power saving is off and LXD is out of reach. Still to do: the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
-| **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
+| **Backup key offline (`age`), off-site copy** | Design decision on where the key and the off-site copy live. |
+| **Gitea has no user** | Registration is off and no admin was ever created, so nobody can sign in (found 2026-11-24). The owner creates the first one in their own terminal. |
+| **`backup.yml` fails in the daytime** | Its proof run wants node3's exports younger than 6 h and they are made at 23:40 UTC, so it ends with an error although the archive is written, verified and copied (2026-11-24). Run it after the export, or start `homelab-exports.service` on node3 first; the role could do that itself. |
 | **Monitoring and metrics** | HomeLab Pulse, planned on node4; not deployed, and it sends no alerts yet. |
 
 ### The single largest risk

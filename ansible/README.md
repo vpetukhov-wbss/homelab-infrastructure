@@ -42,7 +42,7 @@ instead of trusting names.
 
 | Playbook | Hosts | Roles | Notes |
 |---|---|---|---|
-| `base.yml` | node2 and node4; node1–4 | `docker`; `base_packages`, `host_hardening` | Docker was preinstalled on node1 and node3. On node4 the account stays out of the `docker` group |
+| `base.yml` | node2 and node4; node1–4; node4 | `docker`; `base_packages`, `host_hardening`; `wifi_power_save`, `lxd_disabled` | Docker was preinstalled on node1 and node3. On node4 the account stays out of the `docker` group |
 | `overlay.yml` | node1–4 | `wireguard` | One play, so every peer's key is known before templating; `--limit` does not work. Reloads `wg1`, never restarts it |
 | `security.yml` | node1–4 | `firewall`, `ssh_hardening` | Asserts the live rules, the overlay guard and `sshd -T`. On node4 follow [the runbook](../docs/runbooks/firewall-with-rollback.md) |
 | `fail2ban.yml` | node1–4 | `fail2ban` | Includes the laptop: its SSH is forwarded from the Internet |
@@ -57,6 +57,7 @@ instead of trusting names.
 | `backup.yml` | node1 | `backup` | Runs after every service: it snapshots what they created |
 | `mongodb.yml` | node4 | `mongodb` | Written, not deployed and not in `site.yml` yet (roadmap M5) |
 | `controller.yml` | node4 | `persistent_session` | User-level, needs no become password |
+| `restore-drill.yml` | node4 | `restore_drill` | Not in `site.yml`: deploys nothing. About monthly |
 
 On a machine built from scratch, this order matters. node3's exports snapshot Gitea and
 the app host's SQLite, and the backup pulls those exports.
@@ -83,6 +84,9 @@ the app host's SQLite, and the backup pulls those exports.
 | `rabbitmq` | RabbitMQ 3.13 + management UI, on the overlay only, with an absolute memory cap |
 | `gitea` | Gitea + act_runner. Jobs run without the Docker socket and with CPU/RAM/PID caps |
 | `backup` | See [`backup`](#backup) below |
+| `wifi_power_save` | On node4: Wi-Fi power saving off, bound to the interface. Asserts the live setting |
+| `lxd_disabled` | On node4: empties the `lxd` group and masks the LXD installer's socket. Asserts both |
+| `restore_drill` | Restores the newest archive into throwaway containers without a network, in a RAM mount, and checks every part ([runbook](../docs/runbooks/backup-restore.md)) |
 | `persistent_session` | On node4: every interactive SSH login attaches to the tmux session `main`, which outlives the connection. Asserts that logind does not kill it |
 
 ### `host_hardening`
