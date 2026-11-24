@@ -1,0 +1,64 @@
+---
+# With power saving on, the sleeping radio lost 37-42% of the packets sent to an idle node4
+# (2026-11-24); outbound traffic and a busy radio lost none.
+
+- name: Install iw
+  ansible.builtin.apt:
+    name: iw
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Find the Wi-Fi interfaces
+  ansible.builtin.find:
+    paths: /sys/class/net
+    file_type: link
+    patterns: 'wl*'
+  register: wifi_power_save_links
+
+- name: Assert that there is one
+  ansible.builtin.assert:
+    that: wifi_power_save_links.files | length > 0
+    fail_msg: No Wi-Fi interface found; this role is only for a host on Wi-Fi.
+    quiet: true
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: wifi-power-save-off@.service.j2
+    dest: /etc/systemd/system/wifi-power-save-off@.service
+    mode: "0644"
+  become: true
+  register: wifi_power_save_unit
+
+- name: Enable and start it
+  ansible.builtin.systemd:
+    name: "wifi-power-save-off@{{ item.path | basename }}.service"
+    enabled: true
+    state: "{{ 'restarted' if wifi_power_save_unit.changed else 'started' }}"
+    daemon_reload: true
+  loop: "{{ wifi_power_save_links.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  become: true
+  when: not ansible_check_mode
+
+# --- Effective state -------------------------------------------------------------
+- name: Read the live setting
+  ansible.builtin.command: iw dev {{ item.path | basename }} get power_save
+  loop: "{{ wifi_power_save_links.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: wifi_power_save_live
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Assert that power saving is off
+  ansible.builtin.assert:
+    that: "item.stdout == 'Power save: off'"
+    fail_msg: "{{ item.stdout | default('') }}"
+    quiet: true
+  loop: "{{ wifi_power_save_live.results }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
+  when: not ansible_check_mode

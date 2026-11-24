@@ -194,6 +194,7 @@
         cmd: docker info --format '{{ "{{" }}.DockerRootDir{{ "}}" }}'
       register: docker_root
       changed_when: false
+      check_mode: false   # it only reads; skipped, --check would show an empty data root
       become: true
 
     - name: Template daemon.json (log rotation, live-restore, data root preserved)

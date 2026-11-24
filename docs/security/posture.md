@@ -125,6 +125,15 @@ has been triggered as a test. `ignoreip` is loopback, the
 overlay and the controller's own address — **not** the whole LAN, which is hostile and
 must be bannable. The role fails the play if that policy does not hold.
 
+### LXD on node4
+
+Ubuntu's installer puts the first account in the `lxd` group, and
+`lxd-installer.socket` installs LXD for that group on request. Together they are root
+without a password, which would undo keeping the account out of `docker`. Since
+2026-11-24 (role `lxd_disabled`) the group is empty and the socket masked and gone,
+asserted on every run. On node1–3 the account is still in `lxd`; there it adds nothing to
+the `docker` gap below.
+
 ### Backups
 
 AES-256 encrypted (openssl, pbkdf2, 200k iterations), verified by decrypting and listing
@@ -153,7 +162,7 @@ root through the `docker` group — so root on node1 meant root on node3.
 | **No TLS at the edge** | Gitea logins cross the LAN in clear text | A DNS name + certificate before any router forward |
 | **Backup key next to the archives** | Whoever takes node1's disk can decrypt its archives | Encrypt to an `age` public key; keep the identity offline |
 | **No off-site backup** | Both copies are in the same building | Weekly copy off site |
-| **`docker` group = root** | The admin SSH key alone is root on node1–3; on node4 the account is not in the group | Move compose tasks to `become`, drop the group |
+| **`docker` group = root** | The admin SSH key alone is root on node1–3; on node4 the account is in neither `docker` nor `lxd` | Move compose tasks to `become`, drop both groups |
 | **node4 SSH is Internet-forwarded** | The one genuinely public attack surface; key-only auth and Fail2Ban stand in front of it, and the firewall has to let 2345 in from anywhere | M4: remove the forward and the exception (`inventory/group_vars/controller/firewall.yml`), use WireGuard for remote access |
 | **Legacy `wg0` on node1 (and node4's restored copy)** | node1: an open port and a tunnel with one SSH login in the journal (2026-05-07) and no handshake since the 2026-11-21 boot. node4: the config was restored to `/etc/wireguard/restored-from-laptop/` and is inactive | Decide on one remote-access design; remove the other |
 | **Reused sudo password** | node1–3 share one sudo password (node4 has its own) | Per-host passwords, kept in Vault (initialised, still empty) |

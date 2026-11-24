@@ -14,3 +14,10 @@
   roles:
     - base_packages
     - host_hardening
+
+- name: The laptop's own - Wi-Fi without power saving, no LXD
+  hosts: controller
+  gather_facts: true
+  roles:
+    - wifi_power_save
+    - lxd_disabled
