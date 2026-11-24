@@ -145,11 +145,13 @@ the password manager never shares a host with CI jobs.
   Internet.
 - [ ] Docker on node4; Wi-Fi power saving off. `base.yml` installs Docker on node2 only
   today.
-- [ ] A become password for node4. The `ansible_become_pass` in
+- [x] A become password for node4 (2026-11-24). The `ansible_become_pass` in
   `group_vars/homelab/vault.yml` is node1–3's and fails on node4 (verified 2026-11-23,
-  with both `sudo-rs` 0.2.13, the 26.04 default, and the classic `sudo.ws`). The owner
-  puts node4's own in `inventory/host_vars/node4-laptop/vault.yml` (git-ignored) with
-  `ansible-vault create`.
+  with both `sudo-rs` 0.2.13, the 26.04 default, and the classic `sudo.ws`). node4's own
+  is in `inventory/host_vars/node4-laptop/vault.yml` (ansible-vault, git-ignored); from
+  node4, `ansible node4-laptop -b` becomes root.
+- [x] The owner's terminal survives a dropped connection (2026-11-24): role
+  `persistent_session`, plus the sshd keepalive (30 s) on node4, checked with `sshd -T`.
 - [ ] Make the `wireguard` role ready for a fourth peer that connects locally:
   - the `Endpoint` comes from `ansible_host`, which node4 does not have;
   - the handler restarts `wg1` on every peer whenever a peer is added. A reload

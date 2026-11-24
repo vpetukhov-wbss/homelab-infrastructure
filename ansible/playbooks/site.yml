@@ -8,7 +8,8 @@
 #   sentinels after both (they monitor the live master);
 #   edge before sftp-mirror (the mirror watches the edge's SFTP tree);
 #   app-host and gitea before sftp-mirror (node3's exports snapshot their data);
-#   backup last (it pulls those exports and dumps every service).
+#   backup after every service (it pulls those exports and dumps them all);
+#   controller is independent of the rest.
 - name: Base packages, host hardening, Docker
   ansible.builtin.import_playbook: base.yml
 - name: WireGuard overlay
@@ -35,3 +36,5 @@
   ansible.builtin.import_playbook: sftp-mirror.yml
 - name: Nightly backup
   ansible.builtin.import_playbook: backup.yml
+- name: Controller environment
+  ansible.builtin.import_playbook: controller.yml

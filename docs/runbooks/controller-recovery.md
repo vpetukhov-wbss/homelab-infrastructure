@@ -38,6 +38,13 @@ identity, the vault password, the repository with full history plus the git-igno
 inventory, the WireGuard backups, Claude Code's project memory, and recreates the Ansible
 virtualenv.
 
+Then bring back the terminal session that survives a dropped connection:
+
+~~~bash
+cd ~/Projects/homelab-infrastructure/ansible
+~/homelab/.venv/bin/ansible-playbook playbooks/controller.yml
+~~~
+
 **By hand:**
 
 ~~~bash

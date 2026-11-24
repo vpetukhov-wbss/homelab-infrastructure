@@ -1,0 +1,70 @@
+---
+# The owner's terminal on the controller survives a dropped SSH connection: every
+# interactive login attaches to the tmux session "main". User-level only, no become.
+- name: Check that tmux is installed (Ubuntu Server ships it)
+  ansible.builtin.command: tmux -V
+  changed_when: false
+  check_mode: false
+
+- name: Install the tmux configuration
+  ansible.builtin.copy:
+    src: tmux.conf
+    dest: "{{ ansible_env.HOME }}/.tmux.conf"
+    mode: "0644"
+
+- name: Attach interactive SSH logins to the persistent session
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.profile"
+    block: "{{ lookup('ansible.builtin.file', 'profile-block.sh') }}"
+    marker: "# {mark} ANSIBLE MANAGED: persistent_session"
+    validate: bash -n %s
+
+# tmux puts its panes in scopes of the user manager, which stops with the user's last
+# session unless the user lingers. polkit lets a user enable this without root.
+- name: Read whether the user lingers
+  ansible.builtin.command: loginctl show-user {{ ansible_user_id }} -p Linger --value
+  register: persistent_session_linger_before
+  changed_when: false
+  check_mode: false
+
+- name: Keep the user manager running without a login
+  ansible.builtin.command: loginctl enable-linger
+  when: persistent_session_linger_before.stdout != 'yes'
+  changed_when: true
+
+# --- Effective state -------------------------------------------------------------
+# Not in check mode: a dry run on a fresh host has nothing in effect to assert yet.
+- name: Verify the effective state
+  when: not ansible_check_mode
+  block:
+    - name: Read whether logind kills a user's processes at logout
+      ansible.builtin.command: >-
+        busctl get-property org.freedesktop.login1 /org/freedesktop/login1
+        org.freedesktop.login1.Manager KillUserProcesses
+      register: persistent_session_kill
+      changed_when: false
+
+    - name: Read the effective linger state
+      ansible.builtin.command: loginctl show-user {{ ansible_user_id }} -p Linger --value
+      register: persistent_session_linger
+      changed_when: false
+
+    - name: Load the configuration in a throwaway tmux server
+      ansible.builtin.shell:
+        cmd: |
+          tmux -L homelab-check -f "$HOME/.tmux.conf" new-session -d -s check || exit 1
+          tmux -L homelab-check show-options -gv status-interval
+          tmux -L homelab-check kill-server
+        executable: /bin/bash
+      register: persistent_session_tmux
+      changed_when: false
+
+    - name: Assert that a session outlives its connection
+      ansible.builtin.assert:
+        that:
+          - persistent_session_kill.stdout == 'b false'
+          - persistent_session_linger.stdout == 'yes'
+          - persistent_session_tmux.stdout_lines == ['15']
+        fail_msg: >-
+          logind kills processes at logout (KillUserProcesses), the user does not linger, or
+          tmux does not load ~/.tmux.conf: a dropped connection would still end the session.

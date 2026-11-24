@@ -385,6 +385,15 @@ it down, run `clear`, and reply with "done" only.
   Fail2Ban absent, because `security.yml` targets only the three servers and nothing had
   converged node4. After any rebuild, check the controls themselves (`ufw status`,
   `fail2ban-client status`), not the documents.
+- **Every SSH session into node4 died with its connection, and Claude Code with it.**
+  All nine sessions that ended between 2026-11-22 and 2026-11-24 ended with
+  `Connection timed out` in sshd's journal; the owner closed none of them. sshd sent no
+  keepalive (30 s since 2026-11-24), but the last one dropped 23 s after activity, so an
+  idle NAT timeout does not explain them all and the cause on the path is not established. The fix does not
+  depend on it: logins attach to a tmux session on node4 (role `persistent_session`),
+  verified by killing a real connection under a running process. tmux runs its panes
+  under the user manager, so the role also enables linger. A reboot still ends it;
+  `claude --continue` resumes the conversation.
 
 ### Toolchain mechanics
 
@@ -536,7 +545,8 @@ $V/ansible-playbook playbooks/app-host.yml      # node3
 $V/ansible-playbook playbooks/rabbitmq.yml      # node1
 $V/ansible-playbook playbooks/gitea.yml         # node3
 $V/ansible-playbook playbooks/sftp-mirror.yml   # node3 sync account + exports, then node1 mirror
-$V/ansible-playbook playbooks/backup.yml        # last: snapshots what the others create
+$V/ansible-playbook playbooks/backup.yml        # after every service: snapshots what they create
+$V/ansible-playbook playbooks/controller.yml    # node4: tmux session that outlives a connection
 ```
 
 On a machine built from scratch the order matters: node3's exports snapshot Gitea and
