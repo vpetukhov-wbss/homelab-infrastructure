@@ -79,10 +79,14 @@ log "Redis snapshot: $(du -h "$TMP/redis.rdb" | cut -f1)"
 
 # --- 4. RabbitMQ definitions (topology, not message bodies) -------------------
 # rabbitmqctl authenticates with the Erlang cookie, so no password is needed.
-if docker ps --filter name=rabbitmq --filter status=running -q | grep -q .; then
-  docker exec rabbitmq rabbitmqctl -q export_definitions /tmp/definitions.json >/dev/null 2>&1 &&
-  docker cp rabbitmq:/tmp/definitions.json "$TMP/rabbitmq-definitions.json" >/dev/null 2>&1 &&
-  docker exec rabbitmq rm -f /tmp/definitions.json || log "WARN: RabbitMQ export failed"
+if docker exec rabbitmq rabbitmqctl -q export_definitions /tmp/definitions.json >/dev/null 2>&1 \
+   && docker cp rabbitmq:/tmp/definitions.json "$TMP/rabbitmq-definitions.json" >/dev/null 2>&1 \
+   && [ -s "$TMP/rabbitmq-definitions.json" ]; then
+  docker exec rabbitmq rm -f /tmp/definitions.json || true
+  log "RabbitMQ definitions: saved"
+else
+  log "WARN: RabbitMQ export failed (not running?)"
+  STATUS=1
 fi
 
 # --- 4b. node3's own exports (SQLite snapshots, Gitea dump) -------------------

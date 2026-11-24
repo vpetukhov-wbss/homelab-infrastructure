@@ -1,0 +1,81 @@
+---
+# Restores the newest backup into throwaway containers, on a node that runs none of these
+# services. Nothing here writes to a production service.
+
+- name: List the archives in every copy
+  ansible.builtin.find:
+    paths: "{{ item.dir }}"
+    patterns: 'homelab-*.tar.gz.enc'
+    get_checksum: true
+    checksum_algorithm: sha256
+  delegate_to: "{{ item.host }}"
+  loop: "{{ restore_drill_copies }}"
+  register: restore_drill_found
+
+# The timestamp is in the name, so the last name is the newest archive.
+- name: Assert that both copies end with the same archive
+  ansible.builtin.assert:
+    that:
+      - restore_drill_found.results | map(attribute='files') | select | list | length == restore_drill_copies | length
+      - restore_drill_newest | map(attribute='path') | map('basename') | unique | length == 1
+      - restore_drill_newest | map(attribute='checksum') | unique | length == 1
+    fail_msg: A copy is empty, or the newest archives differ in name or in content.
+    quiet: true
+  vars: &restore_drill_vars
+    restore_drill_newest: >-
+      {{ restore_drill_found.results | map(attribute='files') | map('sort', attribute='path') | map('last') | list }}
+
+- name: Install the drill
+  ansible.builtin.template:
+    src: restore-drill.sh.j2
+    dest: /usr/local/sbin/homelab-restore-drill
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Pull the images, so that the timings below are only the restore
+  ansible.builtin.command: docker pull -q {{ item }}
+  loop: ["{{ image_postgres }}", "{{ image_redis }}", "{{ rabbitmq_image }}", "{{ gitea_image }}"]
+  register: restore_drill_pull
+  changed_when: false
+
+- name: Restore
+  vars: *restore_drill_vars
+  block:
+    # Still encrypted at this point. fetch writes as the controller's user.
+    - name: Copy the archive
+      ansible.builtin.fetch:
+        src: "{{ restore_drill_newest[0].path }}"
+        dest: "/var/tmp/{{ restore_drill_newest[0].path | basename }}"
+        flat: true
+      delegate_to: "{{ restore_drill_copies[0].host }}"
+      changed_when: false
+
+    # The secrets go through stdin, never argv. The output carries only names and counts.
+    - name: Run the drill
+      ansible.builtin.command:
+        cmd: "timeout -k 30 900 /usr/local/sbin/homelab-restore-drill /var/tmp/{{ restore_drill_newest[0].path | basename }}"
+        stdin: |-
+          {{ vault_backup_passphrase }}
+          {{ vault_pg_password }}
+          {{ vault_rabbitmq_password }}
+      register: restore_drill_run
+      changed_when: false
+      failed_when: false
+      no_log: true
+  always:
+    - name: Remove the archive
+      ansible.builtin.file:
+        path: "/var/tmp/{{ restore_drill_newest[0].path | basename }}"
+        state: absent
+      changed_when: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ restore_drill_run.stdout_lines + restore_drill_run.stderr_lines }}"
+
+- name: Assert that everything was restored
+  ansible.builtin.assert:
+    that: restore_drill_run.rc == 0
+    fail_msg: The drill failed; see the report above.
+    quiet: true
