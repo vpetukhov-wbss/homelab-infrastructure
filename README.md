@@ -39,11 +39,11 @@ One owner, four machines, and:
 | Hardware | Lenovo desktop, Pentium G620 | Lenovo desktop, Pentium G630 | Dell OptiPlex 755, Core 2 Duo | ThinkPad L470, i5-6200U |
 | RAM / disk | 3.7 GB / 250 GB HDD | 3.7 GB / 250 GB HDD | 3.7 GB / 500 GB HDD | 7.3 GB / 256 GB SSD |
 | Network | wired | wired | wired | Wi-Fi |
-| Runs | **Edge**: Caddy, Vault, SFTP, RabbitMQ, Sentinel, backups | PostgreSQL **primary**, Redis, Sentinel | PostgreSQL standby, Redis, Sentinel, app host, Gitea + CI runner, SFTP mirror, backup copy | **Controller** (Ansible, Claude Code). Being reinstalled as a server for MongoDB, Vaultwarden, LocalStack and monitoring |
+| Runs | **Edge**: Caddy, Vault, SFTP, RabbitMQ, Sentinel, backups | PostgreSQL **primary**, Redis, Sentinel | PostgreSQL standby, Redis, Sentinel, app host, Gitea + CI runner, SFTP mirror, backup copy | **Controller** (Ansible, Claude Code), headless since 2026-11-22. Next: joins wg1, then MongoDB, Vaultwarden, LocalStack and monitoring |
 
 The CPUs have two cores and the disks spin. **Disk I/O is the ceiling**, and containers
 do not change that. Memory is not the limit yet. Measured on the live machines on
-2026-11-22 (grey: installed, blue: in use):
+2026-11-22, node4 on 2026-11-23 after its reinstall (grey: installed, blue: in use):
 
 ~~~mermaid
 ---
@@ -54,10 +54,10 @@ config:
 ---
 xychart-beta
     title "Memory in use vs installed (GiB)"
-    x-axis ["node1", "node2", "node3", "node4 (still a desktop)"]
+    x-axis ["node1", "node2", "node3", "node4"]
     y-axis "GiB" 0 --> 8
     bar [3.65, 3.66, 3.68, 7.13]
-    bar [0.74, 0.69, 0.78, 4.99]
+    bar [0.74, 0.69, 0.78, 0.90]
 ~~~
 
 ~~~mermaid
@@ -69,14 +69,14 @@ config:
 ---
 xychart-beta
     title "Root filesystem used vs size (GB)"
-    x-axis ["node1", "node2", "node3", "node4 (still a desktop)"]
+    x-axis ["node1", "node2", "node3", "node4"]
     y-axis "GB" 0 --> 500
-    bar [243, 243, 490, 250]
-    bar [16, 9, 17, 84]
+    bar [243, 243, 490, 248]
+    bar [16, 9, 17, 9]
 ~~~
 
-node4 is still the old laptop desktop, with a browser and an IDE open; it becomes a
-headless server at its reinstall. Why each service sits where it does:
+node4 was reinstalled headless on 2026-11-22 and runs nothing but the controller yet, so
+its bars show an idle server. Why each service sits where it does:
 [docs/PROJECT-CONTEXT.md §3](docs/PROJECT-CONTEXT.md#3-role-assignment-and-why-each-one-landed-where-it-did).
 
 ## How it fits together
@@ -92,7 +92,7 @@ flowchart TB
         n2 <--> n3
         n3 <--> n1
     end
-    n4["node4 · controller · laptop on Wi-Fi<br/>Ansible · Claude Code<br/>joins wg1 as 10.44.0.4 after its reinstall"]
+    n4["node4 · controller · headless laptop on Wi-Fi<br/>Ansible · Claude Code<br/>not on wg1 yet: joins as 10.44.0.4 next"]
     n4 -- "SSH over the LAN, pinned host keys" --> mesh
 ~~~
 
@@ -114,7 +114,7 @@ flowchart LR
     lanhost(["any device on the LAN"])
     peer(["a wg1 peer"])
 
-    internet -- "TCP 2345<br/>the only router forward today" --> laptop["laptop SSH :2345<br/>keys only · Fail2Ban"]
+    internet -- "TCP 2345<br/>the only router forward today" --> laptop["node4 SSH :2345<br/>keys only<br/>no firewall or Fail2Ban yet"]
     internet -. "planned: one UDP port for WireGuard<br/>then 2345 is closed" .-> peer
 
     lanhost -- "SSH, LAN subnet only" --> nodessh["node1 :2222<br/>node2 :22 · node3 :22<br/>keys only · Fail2Ban"]
@@ -193,7 +193,7 @@ resumed streaming by itself when node2 returned. Runbooks:
 ~~~mermaid
 flowchart TB
     bare(["bare machine"]) --> stick["installer stick built for this machine<br/>disk serial · SSH keys · Wi-Fi<br/>encrypted recovery bundle"]
-    stick --> check{"right disk serial,<br/>and the owner<br/>types yes?"}
+    stick --> check{"right disk serial,<br/>and the owner<br/>confirms the wipe?"}
     check -- no --> safe(["stops, nothing written"])
     check -- yes --> os["unattended Ubuntu Server 26.04<br/>whole-disk LVM · key-only SSH"]
     os --> restore["controller only: sudo homelab-restore<br/>one password brings back SSH keys,<br/>vault password, repository and inventory,<br/>Claude Code"]
@@ -202,7 +202,8 @@ flowchart TB
 
 The stick for node4 was tested end to end in a UEFI virtual machine on 2026-11-21:
 offline install, restore, and Ansible reaching node1–3. The test found three bugs before
-any hardware was wiped. See [installer/README.md](installer/README.md).
+any hardware was wiped. On 2026-11-22 it rebuilt the real laptop: from node4, Ansible
+reaches all four machines and the vault opens. See [installer/README.md](installer/README.md).
 
 ## HomeLab Pulse, my own monitoring
 
@@ -222,7 +223,7 @@ with unit tests. **It is not deployed yet**: machines join once the .NET receive
 accepts the contract. How it works, with sequence diagrams and flowcharts:
 [apps/homelab-pulse/README.md](apps/homelab-pulse/README.md).
 
-## Status on 2026-11-22
+## Status on 2026-11-23
 
 **Running, and checked against the live systems:**
 
@@ -237,7 +238,11 @@ accepts the contract. How it works, with sequence diagrams and flowcharts:
 
 **In development:** HomeLab Pulse (see above).
 
-**Next:** reinstall the laptop as node4 (the installer stick is ready). After that come
+**node4** was reinstalled headless on 2026-11-22 and is the controller again. It is not
+converged yet: no firewall, no Fail2Ban, no Docker, not on wg1. Its SSH (2345, keys only)
+is the one port the router forwards.
+
+**Next:** bring node4 into the platform (firewall, Fail2Ban, Docker, wg1). After that come
 WireGuard remote access, and then MongoDB, Vaultwarden, LocalStack and monitoring on
 node4. Open security gaps are listed in [docs/security/posture.md](docs/security/posture.md).
 

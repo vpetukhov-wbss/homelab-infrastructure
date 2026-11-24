@@ -27,7 +27,7 @@ Two constraints shape every decision here, and both are hardware-imposed:
 | `node1-gateway` | 192.168.0.101 (also .23) | 10.44.0.1 | Ubuntu 22.04.5 | Edge: Caddy, Vault, SFTP primary, Sentinel, RabbitMQ, backup job |
 | `node2-data-replica` | 192.168.0.28 | 10.44.0.2 | Ubuntu 24.04 | PostgreSQL **primary**, Redis, Sentinel |
 | `node3-data` | 192.168.0.103 | 10.44.0.3 | Ubuntu 22.04.5 | PostgreSQL standby, Redis, SFTP mirror, Sentinel, **app host** (nginx + SQLite) |
-| laptop (`node4`) | 192.168.0.35 (Wi-Fi, static) | *(reserved 10.44.0.4, not joined)* | Ubuntu 26.04 | Ansible + Claude Code controller; to be reinstalled headless as a server ([roadmap](../roadmap.md) M2–M3) |
+| laptop (`node4`) | 192.168.0.35 (Wi-Fi, static) | *(reserved 10.44.0.4, not joined)* | Ubuntu 26.04.1 | Ansible + Claude Code controller, headless since 2026-11-22; joins the platform in [roadmap](../roadmap.md) M3 |
 
 **Host and container names do not reliably indicate current role.** After a Redis
 failover the names invert: `node2-data-replica` holds the PostgreSQL *primary*, and
@@ -61,9 +61,10 @@ not hub-and-spoke, so any one node can fail without partitioning the other two.
 Each peer carries a single `/32` `AllowedIPs`. Every database, Vault and SFTP socket
 binds to the overlay address only.
 
-The laptop is in the inventory as `10.44.0.4` but **has no `wg1` interface yet**; it
-reaches the fleet over the LAN via SSH. It also runs an unrelated legacy `wg0`
-(`10.10.10.0/24`) which is not part of this platform.
+node4 is in the inventory as `10.44.0.4` but **has no `wg1` interface yet**; it
+reaches the fleet over the LAN via SSH. The laptop's unrelated legacy `wg0`
+(`10.10.10.0/24`) was carried over by the restore into
+`/etc/wireguard/restored-from-laptop/` and is not active.
 
 ### Edge
 
@@ -227,8 +228,8 @@ re-basebackup.
 
 ## Control plane
 
-Ansible configures machines and services from the controller — today the laptop, after
-its reinstall node4 — and Claude Code works from the same machine. Roles live in
+Ansible configures machines and services from the controller, node4 (the reinstalled
+laptop), and Claude Code works from the same machine. Roles live in
 [`ansible/`](../../ansible/README.md) and are driven by inventory and group variables
 rather than per-machine special cases; `playbooks/site.yml` runs every layer in order.
 Secrets are held in `ansible-vault` files that are git-ignored, unlocked by the homelab
@@ -250,11 +251,12 @@ containers without the Docker socket.
 - **Vault in use.** Initialised, but it holds no secrets yet: an admin policy and
   identity (then revoking the root token), raft snapshots in the backup, and the first
   consumers are roadmap M7.
-- **node4.** The laptop is being reinstalled headless (installer in `installer/`) to
-  host MongoDB 8 — the only AVX machine — LocalStack, Vaultwarden and monitoring, and
-  to be the controller. Until then it is not on the overlay (`10.44.0.4` reserved).
-- **Remote access over WireGuard.** Today the owner's only remote path is SSH to the
-  laptop through a router forward (port 2345), a tracked gap.
+- **node4.** Reinstalled headless on 2026-11-22 (installer in `installer/`) and the
+  controller again, but not converged: no firewall, Fail2Ban, Docker or `wg1` yet
+  (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
+  and monitoring (M5). Until M3 it is not on the overlay (`10.44.0.4` reserved).
+- **Remote access over WireGuard.** Today the owner's only remote path is SSH to
+  node4 through a router forward (port 2345), a tracked gap.
 - **TLS at the edge.** Caddy listens on `:443` but no TLS site is configured; the
   Caddyfile sets `auto_https off` and defines only a `:80` block.
 - **Public ingress.** No router port-forward to node1 exists, so `:80`/`:443` are
