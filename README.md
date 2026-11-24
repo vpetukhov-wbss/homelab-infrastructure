@@ -213,15 +213,15 @@ flowchart LR
         src["/proc · /sys · SMART snapshots<br/>NGINX · SQLite · Redis · PostgreSQL"] --> agent["pulse-agent<br/>every 15 s<br/>unprivileged"]
         agent --> q[("outbox<br/>on disk")]
     end
-    q -- "POST over wg1<br/>token per machine" --> api["receiver (.NET)<br/>outside this repository<br/>history · live dashboard"]
+    q -- "POST over wg1<br/>token per machine" --> api["receiver (.NET, SQLite)<br/>history · Angular dashboard"]
 ~~~
 
 A small Python agent, standard library only, measures each host and its services. It queues
 samples on disk and delivers them to a private receiver, which keeps the history and
-drives a live dashboard. The agent, its JSON contracts and its Ansible role are here,
-with unit tests. **It is not deployed yet**: machines join once the .NET receiver
-accepts the contract. How it works, with sequence diagrams and flowcharts:
-[apps/homelab-pulse/README.md](apps/homelab-pulse/README.md).
+drives a live dashboard. The agent, its JSON contracts, the receiver and the dashboard are
+here with their tests, and a Compose file for local development. **It is not deployed
+yet**: only the agent has an Ansible role. How it works, with sequence diagrams and
+flowcharts: [apps/homelab-pulse/README.md](apps/homelab-pulse/README.md).
 
 ## Status on 2026-11-24
 
@@ -265,7 +265,7 @@ the controller.
 
 ~~~text
 ansible/      roles and playbooks: all machine and service configuration
-apps/         application code: HomeLab Pulse (monitoring agent and its contracts)
+apps/         application code: HomeLab Pulse (monitoring agent, receiver, dashboard)
 inventory/    example inventory, secret-variable template, image pins
               (the real inventory and the secrets are git-ignored)
 installer/    unattended Ubuntu installer stick and the controller restore tool
