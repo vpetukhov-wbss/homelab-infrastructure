@@ -43,7 +43,7 @@ instead of trusting names.
 | Playbook | Hosts | Roles | Notes |
 |---|---|---|---|
 | `base.yml` | node2; node1–3 | `docker`; `base_packages`, `host_hardening` | Docker was preinstalled on node1 and node3 |
-| `overlay.yml` | node1–3 | `wireguard` | One play, so every peer's key is known before templating |
+| `overlay.yml` | node1–4 | `wireguard` | One play, so every peer's key is known before templating; `--limit` does not work. Reloads `wg1`, never restarts it |
 | `security.yml` | node1–4 | `firewall`, `ssh_hardening` | Asserts the live rules, the overlay guard and `sshd -T`. On node4 follow [the runbook](../docs/runbooks/firewall-with-rollback.md) |
 | `fail2ban.yml` | node1–4 | `fail2ban` | Includes the laptop: its SSH is forwarded from the Internet |
 | `data-primary.yml` | node2 | `redis_topology`, `postgres_primary` | Finds the live Redis master first |

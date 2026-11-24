@@ -1,6 +1,9 @@
 ---
-- name: restart wg1
+# Never a restart: it would drop the tunnels under PostgreSQL and Redis on every peer.
+# A reload runs `wg syncconf`, which adds and removes peers without touching the others.
+# It does not apply a changed Address; the verification at the end of the role fails then.
+- name: Reload wg1
   ansible.builtin.systemd:
     name: wg-quick@wg1
-    state: restarted
+    state: reloaded
   become: true

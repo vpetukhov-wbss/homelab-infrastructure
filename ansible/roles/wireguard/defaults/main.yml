@@ -1,0 +1,13 @@
+---
+# Every peer of the full mesh. Sentinels and replication stay on the three servers
+# (redis_topology lists them on its own); node4 only joins the network.
+wg_mesh_hosts: "{{ groups['edge'] + groups['data_primary'] + groups['data_replica'] + groups['controller'] }}"
+
+# The owner's devices (roadmap M4): a list of {name, ip, public_key} in the git-ignored
+# inventory. They peer with every node directly, so no node forwards traffic and losing
+# one node does not cut off the others. Each device generates its own private key.
+wg_remote_peers: []
+
+# The router forwards one UDP port per node, in mesh order: this one to the first node,
+# the next to the second, and so on. All of them reach 51821 on the node.
+wg_remote_base_port: 51821

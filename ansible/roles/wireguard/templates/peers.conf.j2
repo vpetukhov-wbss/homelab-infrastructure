@@ -1,0 +1,11 @@
+# Managed by Ansible (homelab): the nodes a remote device peers with. No secrets.
+# scripts/make-wg-client.sh turns this into a device's configuration.
+{% for host in wg_mesh_hosts %}
+
+[Peer]
+# {{ host }}
+PublicKey = {{ hostvars[host].wg_public_key }}
+AllowedIPs = {{ hostvars[host].wg_overlay_ip }}/32
+Endpoint = HOME_ADDRESS:{{ wg_remote_base_port + loop.index0 }}
+PersistentKeepalive = 25
+{% endfor %}

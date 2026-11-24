@@ -119,8 +119,8 @@ is semi-public. No control in this platform may rest on "only our devices are he
 
 ### Overlay — WireGuard `wg1`, 10.44.0.0/24
 
-A **full mesh** between node1, node2 and node3, not hub-and-spoke, so any one node can
-fail without partitioning the other two. Each peer carries a single `/32` `AllowedIPs`.
+A **full mesh** between all four machines, not hub-and-spoke, so any one node can
+fail without partitioning the others. Each peer carries a single `/32` `AllowedIPs`.
 
 Every database, broker, Vault and application port is published on the overlay
 address. **That binding is necessary but NOT sufficient**, and this was wrong in this
@@ -141,8 +141,8 @@ The bind address still matters — it keeps ports off `0.0.0.0` — and the `app
 inside the ISP's network. Without `wg1`, traffic for the overlay would follow the
 default route there (Redis `AUTH` is clear text). The guard unit therefore also
 installs `unreachable 10.44.0.0/24 metric 4000`; `wg1`'s route wins whenever it is up.
-A machine that is not on the overlay (today: node4) must not talk to `10.44.0.x`. node4
-has had the guard's unreachable route since 2026-11-24, so such traffic fails locally.
+A machine that is not on the overlay must not talk to `10.44.0.x`. All four machines have
+the guard's unreachable route, so such traffic fails locally.
 
 ### Edge
 
@@ -385,6 +385,12 @@ it down, run `clear`, and reply with "done" only.
   Fail2Ban absent, because `security.yml` targets only the three servers and nothing had
   converged node4 (both were applied on 2026-11-24). After any rebuild, check the
   controls themselves (`ufw status`, `fail2ban-client status`), not the documents.
+- **systemd's sandboxing is ignored without an error in user units on node4.**
+  `systemd-run --user -p ProtectHome=tmpfs` left `~/.ssh` readable, because Ubuntu
+  restricts unprivileged user namespaces. Only a system unit isolates; prove it by testing
+  that the path is hidden.
+- **`ansible_host` of node4 is its inventory name**, because it connects locally. The
+  `wireguard` role takes its endpoint from `controller_lan_ip` instead.
 - **Ubuntu 26.04's Fail2Ban bans through nftables by default**
   (`jail.d/defaults-debian.conf`), where `ufw` cannot see the ban. `jail.local` overrides
   it and the role asserts the action. OpenSSH there logs from `sshd-session`, so a jail
@@ -458,8 +464,8 @@ the relocation reverted.
 
 ### Deployed and verified (2026-11-21, against the running systems)
 
-- WireGuard full mesh; all peers handshaking. **Overlay guard** live on all three
-  nodes; the LAN-route attack re-tested: 14 of 14 overlay ports blocked.
+- WireGuard full mesh (node4 joined on 2026-11-24 without a lost packet on the other
+  tunnels); all peers handshaking. **Overlay guard** live on all four machines; the LAN-route attack re-tested: 14 of 14 overlay ports blocked.
 - PostgreSQL 16.16 primary (node2) + streaming standby (node3), zero lag. Write on the
   primary seen on the standby, which refuses writes. `wal_log_hints` on, slot capped at
   20 GB (`wal_status = reserved`), standby has its own `pg_hba`.
@@ -498,7 +504,7 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. Still to do: `base` and `host_hardening`, Docker, `wg1`, and the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
+| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. `wg1` joined the same day. Still to do: `base` and `host_hardening`, Docker, and the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | HomeLab Pulse, planned on node4; not deployed, and it sends no alerts yet. |

@@ -92,12 +92,13 @@ flowchart TB
         n2 <--> n3
         n3 <--> n1
     end
-    n4["node4 · controller · headless laptop on Wi-Fi<br/>Ansible · Claude Code<br/>not on wg1 yet: joins as 10.44.0.4 next"]
-    n4 -- "SSH over the LAN, pinned host keys" --> mesh
+    n4["node4 · controller · 10.44.0.4<br/>headless laptop on Wi-Fi<br/>Ansible · Claude Code"]
+    n4 <-- "wg1, direct to each server" --> mesh
+    n4 -- "Ansible: SSH over the LAN, pinned host keys" --> mesh
 ~~~
 
-- **The mesh has no hub.** Every server peers directly with the other two, so any one
-  of them can fail without cutting the other two apart.
+- **The mesh has no hub.** Every machine peers directly with the other three, so any one
+  of them can fail without cutting the others apart.
 - **Every database, broker, Vault and application port binds to the overlay.** The LAN
   sees only SSH and Caddy.
 - **Roles move.** Redis Sentinel moves the master and a promotion moves the PostgreSQL
@@ -115,7 +116,7 @@ flowchart LR
     peer(["a wg1 peer"])
 
     internet -- "TCP 2345<br/>the only router forward today" --> laptop["node4 SSH :2345<br/>keys only · Fail2Ban"]
-    internet -. "planned: one UDP port for WireGuard<br/>then 2345 is closed" .-> peer
+    internet -. "planned: four UDP ports for WireGuard<br/>then 2345 is closed" .-> peer
 
     lanhost -- "SSH, LAN subnet only" --> nodessh["node1 :2222<br/>node2 :22 · node3 :22<br/>keys only · Fail2Ban"]
     lanhost -- "HTTP / HTTPS" --> caddy["node1 Caddy<br/>:80 / :443<br/>no router forward yet"]
@@ -239,10 +240,10 @@ flowcharts: [apps/homelab-pulse/README.md](apps/homelab-pulse/README.md).
 **In development:** HomeLab Pulse (see above).
 
 **node4** was reinstalled headless on 2026-11-22 and is the controller again. Since
-2026-11-24 it has the firewall, the overlay guard and Fail2Ban; it has no Docker and is
-not on wg1 yet. Its SSH (2345, keys only) is the one port the router forwards.
+2026-11-24 it has the firewall, the overlay guard and Fail2Ban, and it is on wg1; it has
+no Docker yet. Its SSH (2345, keys only) is the one port the router forwards.
 
-**Next:** bring node4 into the platform (Docker, wg1). After that come
+**Next:** finish bringing node4 into the platform (Docker, a reboot). After that come
 WireGuard remote access, and then MongoDB, Vaultwarden, LocalStack and monitoring on
 node4. Open security gaps are listed in [docs/security/posture.md](docs/security/posture.md).
 

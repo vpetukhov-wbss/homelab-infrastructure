@@ -1,8 +1,9 @@
 ---
-# WireGuard overlay mesh across the three wired servers.
-# Single play (linear strategy) so every peer's pubkey is known before templating.
+# WireGuard overlay mesh across the fleet.
+# Single play (linear strategy) so every peer's pubkey is known before templating;
+# it cannot be limited to one host.
 - name: WireGuard overlay (wg1 / 10.44.0.0/24)
-  hosts: edge:data_primary:data_replica
+  hosts: edge:data_primary:data_replica:controller
   gather_facts: true
   roles:
     - wireguard
