@@ -1,0 +1,10 @@
+# Context of backend/Dockerfile: the backend and the contracts it embeds.
+*
+!backend
+!contracts
+**/bin
+**/obj
+**/TestResults
+**/data
+backend/tests
+**/*.db*

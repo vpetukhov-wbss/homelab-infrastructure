@@ -1,0 +1,118 @@
+# Local development only: the receiver, the dashboard and a demo agent on this machine.
+#   docker compose up --build      then open http://127.0.0.1:8088
+# Everything is published on loopback. The agent credential is random, generated on the
+# first start and kept in Docker volumes; `docker compose down -v` discards it.
+name: homelab-pulse-local
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  pids_limit: 128
+
+services:
+  # One shot: a random token for the agent and its SHA-256 digest for the receiver.
+  credentials:
+    <<: *hardening
+    image: python:3.13.18-slim
+    network_mode: none
+    command:
+      - python
+      - -I
+      - -c
+      - |
+        import hashlib, pathlib, secrets
+        token, digest = pathlib.Path("/agent/token"), pathlib.Path("/api/demo")
+        hashed = lambda text: hashlib.sha256(text.encode()).hexdigest()
+        if not (token.exists() and digest.exists() and hashed(token.read_text()) == digest.read_text()):
+            value = secrets.token_hex(32)
+            token.write_text(value)
+            digest.write_text(hashed(value))
+    volumes:
+      - agent-token:/agent
+      - api-digest:/api
+
+  receiver:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      credentials:
+        condition: service_completed_successfully
+    entrypoint:
+      - sh
+      - -c
+      - 'Telemetry__Agents__demo="$$(cat /run/pulse/demo)" || exit 1; export Telemetry__Agents__demo; exec dotnet HomeLab.Pulse.Api.dll'
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Telemetry__DatabasePath: /data/pulse.db
+      Dashboard__PublicNodes__demo__Alias: demo-edge
+      Dashboard__PublicNodes__demo__Metrics__0: cpu
+      Dashboard__PublicNodes__demo__Metrics__1: memory
+      Dashboard__PublicNodes__demo__Metrics__2: swap
+      Dashboard__PublicNodes__demo__Metrics__3: disk
+      Dashboard__PublicNodes__demo__Metrics__4: network
+      Dashboard__PublicNodes__demo__Filesystem: root
+      Dashboard__PublicNodes__demo__NetworkInterface: lan
+      Dashboard__PublicNodes__demo__Machine__IncludeUptime: "true"
+      Dashboard__PublicNodes__demo__Machine__IncludeLoad: "true"
+      Dashboard__PublicNodes__demo__Machine__Filesystems__system: root
+    volumes:
+      - api-data:/data
+      - api-digest:/run/pulse:ro
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:5080:8080"     # also what `npm start` proxies to
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && head -1 <&3 | grep -q " 200 "'
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  web:
+    <<: *hardening
+    build: frontend
+    depends_on:
+      receiver:
+        condition: service_healthy
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:8088:8080"
+
+  # The production agent code, unpackaged, reporting this machine as `demo-edge`.
+  agent:
+    <<: *hardening
+    image: python:3.13.18-slim
+    init: true
+    user: "10001:10001"
+    depends_on:
+      receiver:
+        condition: service_healthy
+    environment:
+      PYTHONPATH: /app
+      PYTHONDONTWRITEBYTECODE: "1"
+    command:
+      - sh
+      - -c
+      - 'while :; do python -m pulse_agent --config /etc/pulse-agent/agent.ini --token-file /run/pulse/token tick; sleep 15; done'
+    volumes:
+      - ./agent/src:/app:ro
+      - ./local/agent.ini:/etc/pulse-agent/agent.ini:ro
+      - agent-token:/run/pulse:ro
+    tmpfs:
+      - /var/lib/pulse-agent:uid=10001,gid=10001,mode=0700
+
+volumes:
+  agent-token:
+  api-digest:
+  api-data:
