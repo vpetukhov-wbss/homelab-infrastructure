@@ -1,0 +1,173 @@
+<div class="overview-layout">
+  <section class="hero">
+    <p class="byline">
+      <strong>Vladimir Petukhov</strong><span>•</span> DevOps &amp; Systems Administration
+    </p>
+    <h1>
+      My self-hosted<br />
+      infrastructure
+    </h1>
+    <p class="hero-description">
+      Explore machine health, database usage, and the engineering decisions behind the lab.
+    </p>
+    <div class="hero-actions">
+      <a class="button primary" routerLink="/machines"
+        >Explore machines <img src="assets/59ef9.svg" alt=""
+      /></a>
+      <a class="button" [href]="repository"
+        >View GitHub repository <img src="assets/c6ba4.svg" alt=""
+      /></a>
+    </div>
+  </section>
+
+  <app-rack-pulse class="overview-rack" [nodes]="nodes()" [points]="rack()" />
+
+  @if (alerts().length) {
+    <section class="alert-grid overview-alerts" aria-label="Current alerts">
+      @for (item of alerts(); track item.label + item.signal.messageKey) {
+        <a class="alert" [routerLink]="item.target">
+          <img
+            [src]="
+              item.signal.messageKey.startsWith('disk.') ? 'assets/f8904.svg' : 'assets/f8341.svg'
+            "
+            alt=""
+          />
+          <span
+            ><strong>{{ signalTitle(item.signal) }}</strong
+            ><small>{{ item.label }} {{ signalReading(item.signal) }}</small></span
+          >
+          <img class="alert-arrow" src="assets/4075b.svg" alt="" />
+        </a>
+      }
+    </section>
+  }
+
+  <section class="stats overview-stats" aria-label="Fleet metrics">
+    @for (card of cards(); track card.label) {
+      <article class="panel stat">
+        <h2>{{ card.label }}</h2>
+        <strong>{{ card.value }}</strong>
+        <p>{{ card.detail }}</p>
+      </article>
+    }
+  </section>
+
+  <section class="panel overview-resources">
+    <h2>Fleet resource signals</h2>
+    <dl class="readout-grid">
+      @for (reading of resources(); track reading.label) {
+        <div>
+          <dt>{{ reading.label }}</dt>
+          <dd>{{ reading.value }}</dd>
+        </div>
+      }
+    </dl>
+  </section>
+
+  <section class="panel overview-chart">
+    <div class="panel-heading">
+      <div>
+        <h2>Fleet load</h2>
+        <p>
+          CPU and RAM from nodes with a pulse
+          @if (fleetSnapshot()) {
+            · {{ fleetSnapshot() | date: 'shortTime' }}
+          }
+        </p>
+      </div>
+      <div class="segments" role="group" aria-label="History window">
+        @for (window of windows; track window) {
+          <button
+            type="button"
+            [attr.aria-pressed]="selected() === window"
+            (click)="selected.set(window)"
+          >
+            {{ window }}
+          </button>
+        }
+      </div>
+    </div>
+    <app-fleet-chart [points]="fleet()" [empty]="chartState()" />
+  </section>
+
+  <section class="panel overview-services">
+    <div class="panel-heading"><h2>Stack pulse</h2></div>
+    @if (serviceReadings().length) {
+      <ul class="service-preview">
+        @for (item of serviceReadings().slice(0, 6); track item.node + item.kind + item.alias) {
+          <li>
+            <span class="icon-tile blue"
+              ><img [src]="'assets/' + item.icon + '.svg'" alt=""
+            /></span>
+            <span
+              ><strong>{{ item.label }}</strong
+              ><small>{{ item.alias }} · {{ item.node }}</small></span
+            >
+            <span
+              class="chip"
+              [class.good]="item.status === 'available' && !item.signals.length"
+              [class.warn]="item.status === 'available' && item.signals.length"
+            >
+              <img
+                [src]="
+                  item.status !== 'available'
+                    ? 'assets/1a074.svg'
+                    : item.signals.length
+                      ? 'assets/52d6c.svg'
+                      : 'assets/5a575.svg'
+                "
+                alt=""
+              />
+              {{
+                item.status === 'available' && item.signals.length
+                  ? 'Needs attention'
+                  : status(item.status)
+              }}
+            </span>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="empty">No service readings to show.</p>
+    }
+    <a class="link" routerLink="/services"
+      >Open service metrics <img src="assets/2b47a.svg" alt=""
+    /></a>
+  </section>
+
+  <app-machine-rows class="overview-machines" [nodes]="nodes()" [showRoute]="true" />
+  <section class="panel overview-recent">
+    <h2>Recent signals</h2>
+    @if (flags().length) {
+      <ul class="signal-list">
+        @for (item of flags().slice(0, 4); track item.label + item.signal.messageKey) {
+          <li>
+            <a [routerLink]="item.target"
+              ><img src="assets/28b98.svg" alt="" />
+              <span
+                ><strong>{{ signalTitle(item.signal) }}</strong
+                ><small>{{ item.label }} {{ signalReading(item.signal) }}</small></span
+              >
+              <img src="assets/b2415.svg" alt=""
+            /></a>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="empty">No signals currently published.</p>
+    }
+  </section>
+
+  <section class="overview-engineering">
+    <div class="panel-heading">
+      <div>
+        <h2>Engineering behind the lab</h2>
+        <p>Architecture, provisioning, and operational decisions in the repository.</p>
+      </div>
+      <a class="button" routerLink="/engineering"
+        >Explore engineering <img src="assets/aeef6.svg" alt=""
+      /></a>
+    </div>
+    <app-engineering-cards />
+  </section>
+</div>
