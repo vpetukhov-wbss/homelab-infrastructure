@@ -1,0 +1,82 @@
+<header class="section-head">
+  <div>
+    <h1>Services</h1>
+    <p>Databases, CI/CD, the proxy and runtime behind the lab.</p>
+  </div>
+  @if (request.hasValue()) {
+    <span>Updated {{ request.value().generatedAt | date: 'shortTime' }}</span>
+  }
+</header>
+<nav class="jump-links" aria-label="Service sections">
+  @for (group of groups(); track group.id) {
+    <a class="button compact" [routerLink]="[]" [fragment]="group.id">{{ group.title }} ↓</a>
+  }
+</nav>
+@if (request.error()) {
+  <p class="empty" role="status">Service readings are temporarily unavailable.</p>
+  <button class="button" type="button" (click)="request.reload()">Retry</button>
+} @else if (request.isLoading() && !request.hasValue()) {
+  <p class="empty" role="status">Loading service readings…</p>
+} @else {
+  @for (group of groups(); track group.id) {
+    <section class="page-section" [id]="group.id">
+      <div class="panel-heading">
+        <h2>{{ group.title }}</h2>
+      </div>
+      <div class="service-grid">
+        @for (item of group.rows; track item.node + item.kind + item.alias) {
+          <article class="panel service-card">
+            <div class="panel-heading">
+              <div class="service-identity">
+                <span class="icon-tile blue"
+                  ><img [src]="'assets/' + item.icon + '.svg'" alt=""
+                /></span>
+                <div>
+                  <h3>{{ item.label }}</h3>
+                  <p>{{ item.alias }} · {{ item.node }}</p>
+                </div>
+              </div>
+              <span
+                class="chip"
+                [class.good]="item.status === 'available' && !item.signals.length"
+                [class.warn]="item.status === 'available' && item.signals.length"
+              >
+                {{
+                  item.status === 'available' && item.signals.length
+                    ? 'Needs attention'
+                    : status(item.status)
+                }}
+              </span>
+            </div>
+            @if (item.observedAt) {
+              <p class="small-muted">Observed {{ item.observedAt | date: 'medium' }}</p>
+            }
+            @if (item.signals.length) {
+              <ul class="reading-list">
+                @for (signal of item.signals; track $index) {
+                  <li>
+                    <strong>{{ signalTitle(signal) }}</strong><span>{{
+                      signalReading(signal)
+                    }}</span>
+                  </li>
+                }
+              </ul>
+            }
+            @if (item.status === 'available' && values(item.metrics).length) {
+              <dl class="readout-grid">
+                @for (reading of values(item.metrics); track reading[0]) {
+                  <div>
+                    <dt>{{ label(reading[0]) }}</dt>
+                    <dd>{{ format(reading[0], reading[1]) }}</dd>
+                  </div>
+                }
+              </dl>
+            }
+          </article>
+        } @empty {
+          <p class="panel empty">No approved readings in this section.</p>
+        }
+      </div>
+    </section>
+  }
+}

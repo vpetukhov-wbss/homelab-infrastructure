@@ -4,8 +4,8 @@ My own monitoring for the homelab. A small agent on every Linux machine measures
 host and the services on it, and sends the readings over WireGuard to a private .NET
 receiver. The receiver keeps the history and drives a live dashboard.
 
-> The Python agent, the telemetry contract, and the first .NET ingest slice are
-> in this repository. No machine is deployed through the `pulse_agents` inventory group.
+> The Python agent, .NET receiver and Angular dashboard are in this repository.
+> No machine is deployed through the `pulse_agents` inventory group.
 
 | Part | Where | State |
 |---|---|---|
@@ -13,7 +13,8 @@ receiver. The receiver keeps the history and drives a live dashboard.
 | Contracts: JSON Schema | [`contracts/`](contracts/) | version 1 |
 | Deployment: Ansible role and an opt-in playbook | [`pulse_agent`](../../ansible/roles/pulse_agent/), [`pulse-agent.yml`](../../ansible/playbooks/pulse-agent.yml) | not applied to any machine |
 | Receiver: .NET ingest, SQLite and retention | [`backend/`](backend/) | local and integration-tested |
-| Public history, dashboard and SignalR | planned | in development |
+| Public snapshots, history and SignalR | [`backend/`](backend/) | implemented and integration-tested |
+| Angular PWA | [`frontend/`](frontend/) | local development |
 
 ## How it fits together
 

@@ -1,0 +1,171 @@
+<a class="button compact back" routerLink="/machines">← All machines</a>
+@if (request.hasValue()) {
+  @let snapshot = request.value();
+  @let machine = snapshot.machine;
+  <header class="section-head">
+    <div>
+      <h1>{{ machine.alias }}</h1>
+      <p>{{ machine.hardware?.model ?? 'Public machine readings' }}</p>
+    </div>
+    <div class="reading-stamp">
+      <span class="chip" [class.good]="machine.host.status === 'available'">
+        {{ status(machine.host.status) }}</span
+      >
+      @if (machine.host.observedAt) {
+        <small>Observed {{ machine.host.observedAt | date: 'medium' }}</small>
+      }
+    </div>
+  </header>
+  <nav class="jump-links" aria-label="Machine sections">
+    <a class="button compact" [routerLink]="[]" fragment="hardware">Hardware ↓</a>
+    <a class="button compact" [routerLink]="[]" fragment="storage">Disks ↓</a>
+    <a class="button compact" [routerLink]="[]" fragment="network">Network ↓</a>
+  </nav>
+  @if (machine.signals.length) {
+    <div class="alert-grid page-section">
+      @for (signal of machine.signals; track $index) {
+        <div class="alert">
+          <img src="assets/28b98.svg" alt="" /><span
+            ><strong>{{ signalTitle(signal) }}</strong
+            ><small>{{ signalReading(signal) }}</small></span
+          >
+        </div>
+      }
+    </div>
+  }
+  <div class="stats page-section">
+    @for (card of cards(); track card.label) {
+      <article class="panel stat">
+        <h2>{{ card.label }}</h2>
+        <strong>{{ card.value }}</strong>
+      </article>
+    }
+  </div>
+  <section id="hardware" class="panel page-section">
+    <h2>Hardware profile</h2>
+    @if (machine.hardware; as hardware) {
+      <dl class="readout-grid">
+        <div>
+          <dt>System model</dt>
+          <dd>{{ hardware.model ?? '—' }}</dd>
+        </div>
+        <div>
+          <dt>Processor</dt>
+          <dd>{{ hardware.cpu.model ?? hardware.cpu.architecture }}</dd>
+        </div>
+        <div>
+          <dt>Logical CPUs</dt>
+          <dd>{{ hardware.cpu.logicalCpuCount }}</dd>
+        </div>
+        <div>
+          <dt>OS-visible memory</dt>
+          <dd>{{ bytes(hardware.osVisibleMemoryBytes) }}</dd>
+        </div>
+      </dl>
+      @if (hardware.memoryModules?.length) {
+        <ul class="reading-list">
+          @for (memory of hardware.memoryModules; track $index) {
+            <li>
+              <strong>{{ bytes(memory.capacityBytes) }} {{ memory.type ?? '' }}</strong>
+              @if (memory.configuredSpeedMtPerSecond != null) {
+                <span>{{ memory.configuredSpeedMtPerSecond }} MT/s</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+    } @else {
+      <p class="empty">No approved hardware profile.</p>
+    }
+  </section>
+  <div class="content-grid page-section">
+    <section class="panel">
+      <h2>CPU and RAM</h2>
+      <p>Utilization over the last hour</p>
+      <app-fleet-chart [points]="machine.history.points" />
+    </section>
+    <section class="panel">
+      <h2>Temperatures and fans</h2>
+      @if (machine.temperatures.length || machine.fans.length) {
+        <ul class="reading-list">
+          @for (reading of machine.temperatures; track reading.alias) {
+            <li>
+              <strong>{{ reading.alias }}</strong><span
+                >{{ temperature(reading.celsius) }} · {{ status(reading.status) }}</span
+              >
+            </li>
+          }
+          @for (fan of machine.fans; track fan.alias) {
+            <li>
+              <strong>{{ fan.alias }}</strong><span
+                >{{ fan.rpm ?? '—' }} RPM · {{ status(fan.status) }}</span
+              >
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="empty">No sensors have been approved.</p>
+      }
+    </section>
+  </div>
+  <div class="content-grid page-section">
+    <section id="storage" class="panel">
+      <h2>Storage</h2>
+      @if (machine.filesystems.length || machine.disks.length) {
+        <ul class="reading-list">
+          @for (disk of machine.filesystems; track disk.alias) {
+            <li>
+              <strong>{{ disk.alias }}</strong><span
+                >{{ diskUsed(disk.availableBytes, disk.totalBytes) }} used ·
+                {{ bytes(disk.availableBytes) }} free</span
+              >
+            </li>
+          }
+          @for (disk of machine.disks; track disk.alias) {
+            <li>
+              <strong>{{ disk.alias }}</strong><span
+                >{{ temperature(disk.smart.temperatureCelsius) }} ·
+                {{
+                  disk.smart.healthPassed == null
+                    ? status(disk.smart.status)
+                    : disk.smart.healthPassed
+                      ? 'SMART passed'
+                      : 'SMART check failed'
+                }}</span
+              >
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="empty">No filesystems or disks have been approved.</p>
+      }
+    </section>
+    <section id="network" class="panel">
+      <h2>Network</h2>
+      <dl class="readout-grid">
+        <div>
+          <dt>Receive</dt>
+          <dd>{{ megabits(machine.host.metrics.networkRxBytesPerSecond) }}</dd>
+        </div>
+        <div>
+          <dt>Transmit</dt>
+          <dd>{{ megabits(machine.host.metrics.networkTxBytesPerSecond) }}</dd>
+        </div>
+      </dl>
+    </section>
+  </div>
+} @else {
+  <h1>{{ alias() }}</h1>
+  <p class="empty" role="status">
+    {{
+      missing()
+        ? 'This machine is not in the public catalog.'
+        : request.isLoading()
+          ? 'Loading machine readings…'
+          : 'Machine readings are temporarily unavailable.'
+    }}
+  </p>
+  @if (request.error() && !missing()) {
+    <button class="button" type="button" (click)="request.reload()">Retry</button>
+  }
+}
