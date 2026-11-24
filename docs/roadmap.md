@@ -24,7 +24,7 @@ One owner, four machines:
 | node1 | Caddy, Vault, SFTP, RabbitMQ, Sentinel, backup job | + WireGuard endpoint for remote access, TLS at the edge |
 | node2 | PostgreSQL primary, Redis, Sentinel | unchanged |
 | node3 | PostgreSQL standby, Redis, Sentinel, app host, Gitea + runner, SFTP mirror, backup copy | unchanged |
-| node4 | reinstalled headless 2026-11-22: controller on Wi-Fi, not converged, not on the overlay | headless server on `wg1` (10.44.0.4): controller + MongoDB 8, Vaultwarden, LocalStack, monitoring |
+| node4 | reinstalled headless 2026-11-22: controller on Wi-Fi, firewall and Fail2Ban since 2026-11-24, not on the overlay | headless server on `wg1` (10.44.0.4): controller + MongoDB 8, Vaultwarden, LocalStack, monitoring |
 
 **Why node4 gets the new services.** It has the only CPU with AVX, which MongoDB 5.0+
 requires. It also has the only SSD and the most RAM (7.3 GB). CI stays on node3 so that
@@ -36,7 +36,7 @@ the password manager never shares a host with CI jobs.
 |---|---|
 | MongoDB (WiredTiger cache capped at 1 GB) | ~1.5 GB |
 | LocalStack | ~1 GB |
-| Prometheus + Grafana | ~0.7 GB |
+| HomeLab Pulse receiver and dashboard (budget, not measured) | ~0.7 GB |
 | Vaultwarden | ~0.1 GB |
 | OS, Docker, Claude Code, Ansible | ~1.5 GB |
 | **Headroom** | **~2.5 GB** |
@@ -132,17 +132,15 @@ the password manager never shares a host with CI jobs.
 - [ ] Add node4 to the mesh as `wg_overlay_ip: 10.44.0.4`, so `wg1` grows from 3 to 4
   peers. The `wireguard` and `redis_topology` roles list the three servers explicitly
   today.
-- [ ] Apply `base`, `host_hardening`, `security` and `fail2ban` to node4. `security.yml`
-  targets only the three servers today. Before node4 joins it, make the `firewall` role
-  read the SSH port from `sshd -T` as `fail2ban` already does (node4 connects locally and
-  has no `ansible_port`, so the role would allow 22 while sshd listens on 2345) **and**
-  give node4 an explicit exception for 2345 from anywhere: the role allows SSH from
-  `lan_cidr` only and deletes the any-source rule, so the router's forward would stop
-  working. Apply it with a rollback timer, and test from the LAN and from outside before
-  cancelling the timer.
-- [ ] Keep node4's SSH reachable from outside until M4 is done. Until `ufw` and
-  `fail2ban` are applied, node4 is a bare key-only sshd on a port that is probed from the
-  Internet.
+- [x] Apply `security` and `fail2ban` to node4 (2026-11-24, with a rollback timer:
+  [runbook](runbooks/firewall-with-rollback.md)). The `firewall` role reads the SSH port
+  from `sshd -T`, and node4 has an explicit any-source exception for 2345. Verified: from
+  node1, 2345 is open while a listener on another port is blocked; a failed login raises
+  the jail's count; a new login from outside worked before the timer was cancelled; a
+  second run changes nothing. The reboot below still has to prove persistence.
+- [ ] Apply `base` and `host_hardening` to node4.
+- [ ] Keep node4's SSH reachable from outside until M4 is done, then delete
+  `inventory/group_vars/controller/firewall.yml`.
 - [ ] Docker on node4; Wi-Fi power saving off. `base.yml` installs Docker on node2 only
   today.
 - [x] A become password for node4 (2026-11-24). The `ansible_become_pass` in
@@ -189,8 +187,10 @@ Each service goes through `/service-onboard`, which produces:
 - [ ] **MongoDB 8**: a single-node replica set, so transactions and change streams work.
   No HA is claimed. WiredTiger cache capped; `mongodump` in the nightly backup.
 - [ ] **LocalStack**: licensing decision first (see below).
-- [ ] **Monitoring**: Prometheus and Grafana on node4, `node_exporter` on all four.
-  Alerts for at least:
+- [ ] **Monitoring**: HomeLab Pulse (decided 2026-11-24, instead of Prometheus and
+  Grafana): the agent on all four machines, the receiver and dashboard on node4. It is
+  written and tested, and deployed nowhere. Nothing in it sends an alert yet, so done
+  includes alerts for at least:
   - disk space;
   - backup age;
   - replication lag;
@@ -267,10 +267,12 @@ password alone.
 | LocalStack | free Hobby tier with an auth token (non-commercial use only); the last community image, pinned and frozen; or Moto, an open-source AWS mock | M5 LocalStack |
 | Remote-access endpoint | node1, which is wired and always on (recommended); or node4 | M4 |
 | Off-site backups | where they go (a cloud bucket or a second location) and who holds the key | M8 |
+| Who sees the Pulse dashboard | WireGuard only, as the goal says (recommended until M6); or public behind Caddy with TLS, which its anonymous read endpoints are written for | M5 monitoring |
 
 ## Not doing
 
 - **Microsoft SQL Server**: declined by the owner on 2026-11-20.
+- **Prometheus and Grafana**: HomeLab Pulse replaces them (owner, 2026-11-24).
 - **Jenkins**: Gitea Actions is used instead, because of RAM.
 - **Kubernetes**: four 2-core machines are served well by Docker Compose.
 - **Terraform**: nothing provider-managed exists yet. Revisit it with DNS automation.

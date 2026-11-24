@@ -54,6 +54,15 @@
   delay: 3
   until: f2b_status.rc == 0
 
+# Ubuntu 26.04's package sets banaction = nftables; a ban there is a rule ufw cannot see.
+- name: Verify that bans go through ufw
+  ansible.builtin.command:
+    cmd: fail2ban-client get sshd actions
+  become: true
+  register: f2b_actions
+  changed_when: false
+  failed_when: "'ufw' not in f2b_actions.stdout_lines | last | split(', ')"
+
 # The overlay and the controller must be exempt; the (hostile) LAN as a whole must not.
 - name: Confirm the overlay and the controller are exempt, the LAN is not
   ansible.builtin.command:

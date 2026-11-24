@@ -96,8 +96,8 @@ reachable only over WireGuard.
 | SFTP mirror | node1 → node3 | lsyncd → rrsync | SSH over `wg1` | `/srv/homelab-sync/data/sftp-mirror` | — (it is a mirror) | — |
 | Backup job | node1 (+ copy on node3) | — | — | `~/backups` (21 kept), node3 30 days | — | [backup-restore](../runbooks/backup-restore.md) |
 
-Planned on node4 (not deployed): MongoDB 8, Vaultwarden, LocalStack, Prometheus +
-Grafana — see the [roadmap](../roadmap.md).
+Planned on node4 (not deployed): MongoDB 8, Vaultwarden, LocalStack, HomeLab Pulse —
+see the [roadmap](../roadmap.md).
 
 ## Data resiliency
 
@@ -252,8 +252,8 @@ containers without the Docker socket.
   identity (then revoking the root token), raft snapshots in the backup, and the first
   consumers are roadmap M7.
 - **node4.** Reinstalled headless on 2026-11-22 (installer in `installer/`) and the
-  controller again, but not converged: no firewall, Fail2Ban, Docker or `wg1` yet
-  (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
+  controller again, with the firewall, overlay guard and Fail2Ban since 2026-11-24;
+  no Docker or `wg1` yet (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
   and monitoring (M5). Until M3 it is not on the overlay (`10.44.0.4` reserved).
 - **Remote access over WireGuard.** Today the owner's only remote path is SSH to
   node4 through a router forward (port 2345), a tracked gap.

@@ -19,12 +19,14 @@ What each machine listens on, and from where it can be reached.
 | node1-gateway | 2222 SSH (LAN subnet + legacy `wg0` only), 80, 443 Caddy | 2022 SFTP, 8200 Vault, 26379 Sentinel, 5672 + 15672 RabbitMQ | — |
 | node2-data-replica | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel | — |
 | node3-data | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel, 8080 nginx, 3000 + 2223 Gitea | — |
-| node4 (laptop) | 2345 SSH from any source, including the router forward; no firewall | — (not on `wg1` yet) | — |
+| node4 (laptop) | 2345 SSH from any source, including the router forward (the tracked exception); 51821/udp allowed, nothing listens until `wg1` | — (not on `wg1` yet) | — |
 
-node4 was reinstalled on 2026-11-22 and has not been converged. `ufw` is installed but
-disabled, Fail2Ban is absent, and the overlay guard is not installed, so it has no
-unreachable route for `10.44.0.0/24` either. sshd offers `publickey` only (probed on
-2026-11-23). node4 is outside the guarantees below until roadmap M3.
+node4 was reinstalled on 2026-11-22. Since 2026-11-24 it has `ufw` (default deny),
+Fail2Ban, the overlay guard with its unreachable route, and the same sshd hardening as
+the servers. Verified: from node1, 2345 is open and a listener on another port is blocked;
+`sshd -T`; a new login from outside. It is not on `wg1`, so the LAN-route test has nothing
+to reach there yet, and a reboot has not yet proven that the controls come back
+(roadmap M3).
 
 ## The overlay guard — the control that actually keeps services private
 
@@ -117,8 +119,9 @@ held passwords at `0644` (the old single-file Redis and Sentinel configs) were r
 
 ### Fail2Ban
 
-sshd jail active on node1–3, banning through `ufw`. node4 had one before its reinstall
-and does not yet. `ignoreip` is loopback, the
+sshd jail active on all four, banning through `ufw` (the role asserts the action). On
+node4 a failed login from node1 raised the jail's count from 0 to 1 (2026-11-24); no ban
+has been triggered as a test. `ignoreip` is loopback, the
 overlay and the controller's own address — **not** the whole LAN, which is hostile and
 must be bannable. The role fails the play if that policy does not hold.
 
@@ -151,7 +154,7 @@ root through the `docker` group — so root on node1 meant root on node3.
 | **Backup key next to the archives** | Whoever takes node1's disk can decrypt its archives | Encrypt to an `age` public key; keep the identity offline |
 | **No off-site backup** | Both copies are in the same building | Weekly copy off site |
 | **`docker` group = root** | The admin SSH key alone is root on every node | Move compose tasks to `become`, drop the group |
-| **node4 SSH is Internet-forwarded, with no firewall or Fail2Ban since its reinstall** | The one genuinely public attack surface; only key-only auth stands in front of it | M3: `ufw` and Fail2Ban on node4; M4: remove the forward, use WireGuard for remote access |
+| **node4 SSH is Internet-forwarded** | The one genuinely public attack surface; key-only auth and Fail2Ban stand in front of it, and the firewall has to let 2345 in from anywhere | M4: remove the forward and the exception (`inventory/group_vars/controller/firewall.yml`), use WireGuard for remote access |
 | **Legacy `wg0` on node1 (and node4's restored copy)** | node1: an open port and a tunnel with one SSH login in the journal (2026-05-07) and no handshake since the 2026-11-21 boot. node4: the config was restored to `/etc/wireguard/restored-from-laptop/` and is inactive | Decide on one remote-access design; remove the other |
 | **Reused sudo password** | node1–3 share one sudo password (node4 has its own) | Per-host passwords, kept in Vault (initialised, still empty) |
 | **PostgreSQL superuser over the overlay** | Every user incl. superuser may connect from `10.44.0.0/24` | A `pg_read_all_data` role for backups; superuser local-only |

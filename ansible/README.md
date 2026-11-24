@@ -32,7 +32,7 @@ $V/ansible-playbook playbooks/edge.yml       # or a single layer
 | `edge` | node1-gateway | Caddy, Vault, SFTP, RabbitMQ, Sentinel, backup job |
 | `data_primary` | node2 | PostgreSQL primary + Redis, Sentinel |
 | `data_replica` | node3-data | PostgreSQL standby + Redis, Sentinel, app host, Gitea + runner, sync account |
-| `controller` | node4-laptop (local connection) | Fail2Ban only, until node4 is onboarded (roadmap M3) |
+| `controller` | node4-laptop (local connection) | Firewall, SSH hardening, Fail2Ban and the persistent session, until node4 is onboarded (roadmap M3) |
 
 A group name says which role was **installed** on the host. Failover moves the live
 roles; today the Redis master is on node3. That is why the roles discover the topology
@@ -44,7 +44,7 @@ instead of trusting names.
 |---|---|---|---|
 | `base.yml` | node2; node1–3 | `docker`; `base_packages`, `host_hardening` | Docker was preinstalled on node1 and node3 |
 | `overlay.yml` | node1–3 | `wireguard` | One play, so every peer's key is known before templating |
-| `security.yml` | node1–3 | `firewall`, `ssh_hardening` | Asserts the overlay guard and `sshd -T` |
+| `security.yml` | node1–4 | `firewall`, `ssh_hardening` | Asserts the live rules, the overlay guard and `sshd -T`. On node4 follow [the runbook](../docs/runbooks/firewall-with-rollback.md) |
 | `fail2ban.yml` | node1–4 | `fail2ban` | Includes the laptop: its SSH is forwarded from the Internet |
 | `data-primary.yml` | node2 | `redis_topology`, `postgres_primary` | Finds the live Redis master first |
 | `data-replica.yml` | node3 | `redis_topology`, `postgres_replica` | Same; bootstraps the standby with `pg_basebackup` |
@@ -95,7 +95,8 @@ the app host's SQLite, and the backup pulls those exports.
 ### `firewall`
 
 - ufw default deny;
-- SSH allowed only from the LAN and `wg1`;
+- SSH allowed only from the LAN and `wg1`, on the port `sshd -T` reports. The one exception is
+  node4, open to any source until roadmap M4 (`inventory/group_vars/controller/firewall.yml`);
 - the **overlay guard**: a `raw`-table drop of overlay traffic that did not arrive on
   `wg1`, plus an `unreachable` route for the address range that collides with the ISP.
 

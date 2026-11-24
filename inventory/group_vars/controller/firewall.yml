@@ -1,0 +1,5 @@
+---
+# The one standing exception to "SSH is never open to Anywhere" (CLAUDE.md): node4's
+# forwarded SSH is the owner's only remote path today. Delete this file and re-run
+# security.yml once WireGuard remote access works (roadmap M4).
+firewall_ssh_from_anywhere: true

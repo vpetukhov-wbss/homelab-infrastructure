@@ -1,7 +1,9 @@
 ---
-# Firewall + SSH hardening across the three wired servers.
+# Firewall + SSH hardening across the fleet.
+# On node4 (the controller) follow docs/runbooks/firewall-with-rollback.md: its SSH is
+# the owner's only remote path.
 - name: Firewall + SSH hardening
-  hosts: edge:data_primary:data_replica
+  hosts: edge:data_primary:data_replica:controller
   gather_facts: true
   roles:
     - firewall
