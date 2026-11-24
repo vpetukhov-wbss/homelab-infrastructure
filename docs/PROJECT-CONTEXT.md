@@ -504,7 +504,7 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. `wg1` joined the same day. Still to do: `base` and `host_hardening`, Docker, and the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
+| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. `wg1` joined the same day. `base`, `host_hardening` and Docker followed. Still to do: Wi-Fi power saving and the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | HomeLab Pulse, planned on node4; not deployed, and it sends no alerts yet. |

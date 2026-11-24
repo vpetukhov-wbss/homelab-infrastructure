@@ -1,16 +1,15 @@
 ---
-# Base layer: Docker (node2 only — node1/node3 already have it), base packages everywhere.
+# Base layer: Docker (node2 and node4; it was preinstalled on node1/node3), base packages everywhere.
 # Run: ansible-playbook playbooks/base.yml  (become password from the git-ignored ansible-vault file)
-# node4 is not a managed server yet; it joins in roadmap M3.
 
-- name: Install Docker on fresh data-primary node
-  hosts: data_primary
+- name: Install Docker where it was not preinstalled
+  hosts: data_primary:controller
   gather_facts: true
   roles:
     - docker
 
-- name: Install base packages + enable IP forwarding on the three servers
-  hosts: edge:data_primary:data_replica
+- name: Install base packages + enable IP forwarding on the fleet
+  hosts: edge:data_primary:data_replica:controller
   gather_facts: true
   roles:
     - base_packages

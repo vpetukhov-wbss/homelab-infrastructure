@@ -253,7 +253,7 @@ containers without the Docker socket.
   consumers are roadmap M7.
 - **node4.** Reinstalled headless on 2026-11-22 (installer in `installer/`) and the
   controller again, with the firewall, overlay guard and Fail2Ban since 2026-11-24;
-  no Docker yet (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
+  Docker, smartd and the watchdog since the same day (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
   and monitoring (M5). On `wg1` since 2026-11-24.
 - **Remote access over WireGuard.** Today the owner's only remote path is SSH to
   node4 through a router forward (port 2345), a tracked gap.

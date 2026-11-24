@@ -240,10 +240,10 @@ accepts the contract. How it works, with sequence diagrams and flowcharts:
 **In development:** HomeLab Pulse (see above).
 
 **node4** was reinstalled headless on 2026-11-22 and is the controller again. Since
-2026-11-24 it has the firewall, the overlay guard and Fail2Ban, and it is on wg1; it has
-no Docker yet. Its SSH (2345, keys only) is the one port the router forwards.
+2026-11-24 it has the firewall, the overlay guard and Fail2Ban, and it is on wg1;
+Docker, smartd and the watchdog run there too. Its SSH (2345, keys only) is the one port the router forwards.
 
-**Next:** finish bringing node4 into the platform (Docker, a reboot). After that come
+**Next:** reboot node4 to prove that all of it comes back. After that come
 WireGuard remote access, and then MongoDB, Vaultwarden, LocalStack and monitoring on
 node4. Open security gaps are listed in [docs/security/posture.md](docs/security/posture.md).
 

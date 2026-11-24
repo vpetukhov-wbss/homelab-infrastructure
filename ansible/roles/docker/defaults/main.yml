@@ -1,0 +1,4 @@
+---
+# Membership in the docker group is root without a password. Off for node4, whose account
+# holds the keys to every machine and is reachable from the Internet (roadmap M4).
+docker_admin_in_group: true

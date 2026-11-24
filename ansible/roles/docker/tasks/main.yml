@@ -45,6 +45,7 @@
     groups: docker
     append: true
   become: true
+  when: docker_admin_in_group
 
 - name: Ensure docker service running + enabled
   ansible.builtin.systemd:

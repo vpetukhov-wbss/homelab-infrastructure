@@ -36,7 +36,7 @@ the password manager never shares a host with CI jobs.
 |---|---|
 | MongoDB (WiredTiger cache capped at 1 GB) | ~1.5 GB |
 | LocalStack | ~1 GB |
-| HomeLab Pulse receiver and dashboard (budget, not measured) | ~0.7 GB |
+| HomeLab Pulse receiver and dashboard (budget; idle with one agent it took 0.09 GB on 2026-11-24) | ~0.7 GB |
 | Vaultwarden | ~0.1 GB |
 | OS, Docker, Claude Code, Ansible | ~1.5 GB |
 | **Headroom** | **~2.5 GB** |
@@ -138,11 +138,13 @@ the password manager never shares a host with CI jobs.
   node1, 2345 is open while a listener on another port is blocked; a failed login raises
   the jail's count; a new login from outside worked before the timer was cancelled; a
   second run changes nothing. The reboot below still has to prove persistence.
-- [ ] Apply `base` and `host_hardening` to node4.
+- [x] Apply `base` and `host_hardening` to node4 (2026-11-24): smartd (SSD PASSED),
+  watchdog iTCO fed by systemd, panic sysctls. A second run changes nothing.
 - [ ] Keep node4's SSH reachable from outside until M4 is done, then delete
   `inventory/group_vars/controller/firewall.yml`.
-- [ ] Docker on node4; Wi-Fi power saving off. `base.yml` installs Docker on node2 only
-  today.
+- [x] Docker on node4 (2026-11-24): 29.10.0, `live-restore`, json-file log rotation,
+  ordered after `wg1` and the guard. The owner's account is not in the `docker` group.
+- [ ] Wi-Fi power saving off on node4.
 - [x] A become password for node4 (2026-11-24). The `ansible_become_pass` in
   `group_vars/homelab/vault.yml` is node1–3's and fails on node4 (verified 2026-11-23,
   with both `sudo-rs` 0.2.13, the 26.04 default, and the classic `sudo.ws`). node4's own
@@ -193,7 +195,8 @@ Each service goes through `/service-onboard`, which produces:
 - [ ] **LocalStack**: licensing decision first (see below).
 - [ ] **Monitoring**: HomeLab Pulse (decided 2026-11-24, instead of Prometheus and
   Grafana): the agent on all four machines, the receiver and dashboard on node4. It is
-  written and tested, and deployed nowhere. Nothing in it sends an alert yet, so done
+  written and tested, its Compose stack has run on node4 as a test, and it is deployed
+  nowhere. Nothing in it sends an alert yet, so done
   includes alerts for at least:
   - disk space;
   - backup age;
