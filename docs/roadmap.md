@@ -36,7 +36,7 @@ the password manager never shares a host with CI jobs.
 |---|---|
 | MongoDB (WiredTiger cache capped at 1 GB) | ~1.5 GB |
 | LocalStack | ~1 GB |
-| Prometheus + Grafana | ~0.7 GB |
+| HomeLab Pulse receiver and dashboard (budget, not measured) | ~0.7 GB |
 | Vaultwarden | ~0.1 GB |
 | OS, Docker, Claude Code, Ansible | ~1.5 GB |
 | **Headroom** | **~2.5 GB** |
@@ -189,8 +189,10 @@ Each service goes through `/service-onboard`, which produces:
 - [ ] **MongoDB 8**: a single-node replica set, so transactions and change streams work.
   No HA is claimed. WiredTiger cache capped; `mongodump` in the nightly backup.
 - [ ] **LocalStack**: licensing decision first (see below).
-- [ ] **Monitoring**: Prometheus and Grafana on node4, `node_exporter` on all four.
-  Alerts for at least:
+- [ ] **Monitoring**: HomeLab Pulse (decided 2026-11-24, instead of Prometheus and
+  Grafana): the agent on all four machines, the receiver and dashboard on node4. It is
+  written and tested, and deployed nowhere. Nothing in it sends an alert yet, so done
+  includes alerts for at least:
   - disk space;
   - backup age;
   - replication lag;
@@ -267,10 +269,12 @@ password alone.
 | LocalStack | free Hobby tier with an auth token (non-commercial use only); the last community image, pinned and frozen; or Moto, an open-source AWS mock | M5 LocalStack |
 | Remote-access endpoint | node1, which is wired and always on (recommended); or node4 | M4 |
 | Off-site backups | where they go (a cloud bucket or a second location) and who holds the key | M8 |
+| Who sees the Pulse dashboard | WireGuard only, as the goal says (recommended until M6); or public behind Caddy with TLS, which its anonymous read endpoints are written for | M5 monitoring |
 
 ## Not doing
 
 - **Microsoft SQL Server**: declined by the owner on 2026-11-20.
+- **Prometheus and Grafana**: HomeLab Pulse replaces them (owner, 2026-11-24).
 - **Jenkins**: Gitea Actions is used instead, because of RAM.
 - **Kubernetes**: four 2-core machines are served well by Docker Compose.
 - **Terraform**: nothing provider-managed exists yet. Revisit it with DNS automation.

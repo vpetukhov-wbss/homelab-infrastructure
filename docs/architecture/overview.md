@@ -96,8 +96,8 @@ reachable only over WireGuard.
 | SFTP mirror | node1 → node3 | lsyncd → rrsync | SSH over `wg1` | `/srv/homelab-sync/data/sftp-mirror` | — (it is a mirror) | — |
 | Backup job | node1 (+ copy on node3) | — | — | `~/backups` (21 kept), node3 30 days | — | [backup-restore](../runbooks/backup-restore.md) |
 
-Planned on node4 (not deployed): MongoDB 8, Vaultwarden, LocalStack, Prometheus +
-Grafana — see the [roadmap](../roadmap.md).
+Planned on node4 (not deployed): MongoDB 8, Vaultwarden, LocalStack, HomeLab Pulse —
+see the [roadmap](../roadmap.md).
 
 ## Data resiliency
 

@@ -495,7 +495,7 @@ the relocation reverted.
 | **node4 converged (roadmap M3)** | Reinstalled and restored 2026-11-22, but nothing has converged it: ufw is installed and disabled, Fail2Ban, Docker and `wg1` are absent, and so is the overlay guard with its unreachable route. Its SSH (2345, key-only) is Internet-forwarded with no firewall in front. Kernel -44 waits for a reboot. SSH from outside through the router works (2026-11-24). |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
-| **Monitoring and metrics** | Planned on node4. |
+| **Monitoring and metrics** | HomeLab Pulse, planned on node4; not deployed, and it sends no alerts yet. |
 
 ### The single largest risk
 
