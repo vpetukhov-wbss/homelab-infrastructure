@@ -123,6 +123,7 @@ public sealed class OverviewTests : IDisposable
         Directory.CreateDirectory(SnapshotPath);
         using var failures = new PublicationFailures();
         await using var app = new PulseApiFactory(DatabasePath, clock: clock, dashboard: Catalog(), logging: failures);
+        app.UseKestrel(0);
         using var client = app.CreateClient();
         await failures.WaitAsync();
         var failedRevision = await AllocatedRevisionAsync();
@@ -134,6 +135,9 @@ public sealed class OverviewTests : IDisposable
         Directory.Delete(SnapshotPath);
         clock.Advance(TimeSpan.FromSeconds(2));
         var first = await WaitForOverviewAsync(client, root => Revision(root) > failedRevision);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await using var events = new PulseEvents(client.BaseAddress!);
+        await events.ConnectAsync(deadline.Token);
         File.Move(SnapshotPath, Path.Combine(_temporary.FullName, "backup.json"));
         Directory.CreateDirectory(SnapshotPath);
 
@@ -149,6 +153,8 @@ public sealed class OverviewTests : IDisposable
         var recovered = await WaitForOverviewAsync(client, root => Revision(root) > secondFailure);
         Assert.Equal("available", Node(recovered).GetProperty("status").GetString());
         Assert.Equal(recovered.GetRawText(), await File.ReadAllTextAsync(SnapshotPath));
+        var notification = await events.ReadAfterAsync(Revision(first), deadline.Token);
+        Assert.True(JsonElement.DeepEquals(recovered, notification));
 
         File.Move(SnapshotPath, Path.Combine(_temporary.FullName, "recovered.json"));
         Directory.CreateDirectory(SnapshotPath);

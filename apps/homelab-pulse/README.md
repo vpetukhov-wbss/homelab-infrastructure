@@ -4,8 +4,8 @@ My own monitoring for the homelab. A small agent on every Linux machine measures
 host and the services on it, and sends the readings over WireGuard to a private .NET
 receiver. The receiver keeps the history and drives a live dashboard.
 
-> The Python agent, the telemetry contract, and the first .NET ingest slice are
-> in this repository. No machine is deployed through the `pulse_agents` inventory group.
+> The Python agent, .NET receiver and Angular dashboard are in this repository.
+> No machine is deployed through the `pulse_agents` inventory group.
 
 | Part | Where | State |
 |---|---|---|
@@ -13,7 +13,29 @@ receiver. The receiver keeps the history and drives a live dashboard.
 | Contracts: JSON Schema | [`contracts/`](contracts/) | version 1 |
 | Deployment: Ansible role and an opt-in playbook | [`pulse_agent`](../../ansible/roles/pulse_agent/), [`pulse-agent.yml`](../../ansible/playbooks/pulse-agent.yml) | not applied to any machine |
 | Receiver: .NET ingest, SQLite and retention | [`backend/`](backend/) | local and integration-tested |
-| Public history, dashboard and SignalR | planned | in development |
+| Public snapshots, history and SignalR | [`backend/`](backend/) | implemented and integration-tested |
+| Angular PWA | [`frontend/`](frontend/) | local development |
+
+## Run it locally
+
+Needs Docker with Compose v2. From this directory:
+
+~~~bash
+docker compose up --build      # dashboard: http://127.0.0.1:8088
+docker compose down            # add -v to drop the database and the demo credential
+~~~
+
+[`compose.yaml`](compose.yaml) starts the receiver, the dashboard behind NGINX, and the
+production agent code reporting this machine as `demo-edge`. CPU and network rates need
+two samples, so they appear after about 30 seconds. Ports are published on loopback only.
+The agent credential is random and generated on the first start.
+
+For frontend work with live reload, keep the stack running and start `npm start` in
+[`frontend/`](frontend/): its proxy already points at the receiver on port 5080. After a
+backend change, run `docker compose up --build receiver`.
+
+This stack is for development. Only the agent has an Ansible role; the receiver and the
+dashboard have no deployment yet.
 
 ## How it fits together
 

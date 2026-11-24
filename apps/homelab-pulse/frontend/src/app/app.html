@@ -1,0 +1,52 @@
+<a class="skip" href="#main-content">Skip to content</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" routerLink="/">
+      <span class="brand-mark"><img src="assets/d57f4.svg" alt="" /></span>
+      <span>HomeLab Pulse</span>
+    </a>
+    <nav class="tabs" aria-label="Main navigation">
+      @for (tab of navigation; track tab.href) {
+        <a
+          [routerLink]="tab.href"
+          routerLinkActive="current"
+          ariaCurrentWhenActive="page"
+          [routerLinkActiveOptions]="{ exact: tab.href === '/' }"
+        >
+          <picture>
+            <source media="(max-width: 760px)" [srcset]="'assets/' + tab.mobile + '.svg'" />
+            <img [src]="'assets/' + tab.desktop + '.svg'" alt="" />
+          </picture>
+          {{ tab.label }}
+        </a>
+      }
+    </nav>
+    <span class="chip network" role="status" [class.good]="overview.status() === 'Live'">
+      <img [src]="overview.status() === 'Live' ? 'assets/5a575.svg' : 'assets/1a074.svg'" alt="" />
+      {{ overview.status() }}
+    </span>
+  </div>
+</header>
+
+<main id="main-content" class="page">
+  @if (overview.unavailable()) {
+    <div class="notice" role="status">
+      {{
+        overview.snapshot()
+          ? 'Connection interrupted. Overview readings are from the last update.'
+          : 'Telemetry is temporarily unavailable.'
+      }}
+      <button class="button compact" type="button" (click)="overview.refresh()">Retry</button>
+    </div>
+  } @else if (!overview.snapshot()) {
+    <p class="sr-only" role="status">Loading telemetry…</p>
+  }
+  <router-outlet />
+</main>
+
+<footer class="site-footer">
+  <div>
+    <span>HomeLab Pulse · Vladimir Petukhov</span>
+    <a [href]="repository">Infrastructure repository <img src="assets/19fb4.svg" alt="" /></a>
+  </div>
+</footer>

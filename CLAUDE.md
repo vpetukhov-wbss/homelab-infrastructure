@@ -174,3 +174,14 @@ A container starting is not done. Done means all of the following:
 `/plan-change`, `/bootstrap-node`, `/deploy-node`, `/service-onboard`, `/security-review`,
 `/incident-response`, `/dr-drill`, `/review-infrastructure`, `/project-status`. See
 `docs/claude-code.md`.
+
+## .NET engineering workflow
+
+- Scope: HomeLab Pulse ASP.NET Core receiver under `apps/homelab-pulse/backend`. Preserve private ingest and public allowlisted dashboard contracts. Read `docs/PROJECT-CONTEXT.md` and the backend README.
+- Solution/project: `apps/homelab-pulse/backend/HomeLab.Pulse.slnx`.
+- SDK and targets: Use pinned SDK 10.0.404 (`apps/homelab-pulse/backend/global.json`). Check project-specific and inherited build settings before changing target frameworks.
+- Verification: From `apps/homelab-pulse/backend`, run `dotnet restore --locked-mode`, `dotnet build --configuration Release --no-restore`, and `dotnet test --configuration Release --no-build --no-restore`.
+
+- Follow the existing repository-specific instructions and work sequence first. Apply [C# rules](.claude/rules/dotnet-csharp.md), [async rules](.claude/rules/dotnet-async-concurrency.md), and the relevant test/contract procedures.
+- For substantial changes, use [the .NET feature procedure](.claude/skills/dotnet-feature/SKILL.md) for implementation and [the code review procedure](.claude/skills/code-review/SKILL.md) before publication. Use the relevant specialist review criteria. Check method and constructor signatures, including ambiguous primitive and Boolean arguments.
+- Run `python3 scripts/validate-setup.py` when changing the setup. Use the repository's build and test commands for application changes.
