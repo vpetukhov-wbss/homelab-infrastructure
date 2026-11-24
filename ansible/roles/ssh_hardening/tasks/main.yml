@@ -77,3 +77,4 @@
       /etc/ssh/sshd_config.d/ probably sorts earlier and wins — check for
       50-cloud-init.conf.
     success_msg: "sshd is key-only on {{ inventory_hostname }} (verified against sshd -T)"
+  when: not ansible_check_mode

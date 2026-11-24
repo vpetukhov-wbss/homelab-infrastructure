@@ -5,24 +5,54 @@
 # alone does NOT keep them off the LAN (Docker DNAT bypasses ufw) — the overlay guard
 # at the end of this file is what does. See defaults/main.yml.
 
+- name: Read the port sshd actually uses
+  ansible.builtin.command: sshd -T
+  become: true
+  register: firewall_sshd
+  changed_when: false
+  check_mode: false
+
+- name: Read what actually listens
+  ansible.builtin.command: ss -Hltn
+  register: firewall_listeners
+  changed_when: false
+  check_mode: false
+
+# Not a loop: with no port found, a looped assert would pass without running.
+- name: Refuse to filter SSH on a guessed port
+  ansible.builtin.assert:
+    that:
+      - firewall_ssh_ports | length > 0
+      - >-
+        ansible_connection | default('ssh') == 'local'
+        or (ansible_port | default(22) | string) in firewall_ssh_ports
+      - >-
+        firewall_ssh_ports | difference(firewall_listeners.stdout
+        | regex_findall(':([0-9]+)\\s')) | length == 0
+    fail_msg: >-
+      sshd -T, the inventory and the listening sockets disagree on the SSH port of
+      {{ inventory_hostname }}; enabling the firewall could lock everyone out.
+    quiet: true
+
 # SSH from the trusted sources only (wg1 is allowed wholesale further down). The
 # specific rules go in BEFORE the any-source rule is removed, so a running session —
 # including this play's own — is never cut.
 - name: Allow SSH from the trusted sources
   community.general.ufw:
     rule: allow
-    from_ip: "{{ item }}"
-    port: "{{ ansible_port | default(22) }}"
+    from_ip: "{{ item.0 }}"
+    port: "{{ item.1 }}"
     proto: tcp
-  loop: "{{ ssh_allowed_sources }}"
+  loop: "{{ ssh_allowed_sources | product(firewall_ssh_ports) | list }}"
   become: true
 
-- name: Remove the any-source SSH rule
+- name: Remove the any-source SSH rule (or keep it where it is the tracked exception)
   community.general.ufw:
     rule: allow
-    port: "{{ ansible_port | default(22) }}"
+    port: "{{ item }}"
     proto: tcp
-    delete: true
+    delete: "{{ not firewall_ssh_from_anywhere }}"
+  loop: "{{ firewall_ssh_ports }}"
   become: true
 
 - name: Allow WireGuard overlay port
@@ -73,6 +103,33 @@
     state: enabled
   become: true
 
+# The rules the kernel enforces, not the ones ufw was asked for.
+- name: Read the live input rules
+  ansible.builtin.shell:
+    cmd: |
+      iptables -w -S INPUT
+      iptables -w -S ufw-user-input
+    executable: /bin/bash
+  register: firewall_live
+  changed_when: false
+  become: true
+  when: not ansible_check_mode
+
+- name: Assert default deny and the intended SSH scope
+  ansible.builtin.assert:
+    that:
+      - "'-P INPUT DROP' in firewall_live.stdout_lines"
+      - >-
+        ('-A ufw-user-input -s ' ~ item.0 ~ ' -p tcp -m tcp --dport ' ~ item.1 ~ ' -j ACCEPT')
+        in firewall_live.stdout_lines
+      - >-
+        (('-A ufw-user-input -p tcp -m tcp --dport ' ~ item.1 ~ ' -j ACCEPT')
+        in firewall_live.stdout_lines) == firewall_ssh_from_anywhere
+    fail_msg: "ufw does not enforce the intended SSH scope on {{ inventory_hostname }}"
+    quiet: true
+  loop: "{{ ssh_allowed_sources | product(firewall_ssh_ports) | list }}"
+  when: not ansible_check_mode
+
 # --- Overlay guard -----------------------------------------------------------------
 - name: Install the overlay guard script
   ansible.builtin.template:
@@ -97,6 +154,7 @@
     state: started
     daemon_reload: true
   become: true
+  when: not ansible_check_mode
 
 - name: Apply a pending guard restart before verifying
   ansible.builtin.meta: flush_handlers
@@ -112,6 +170,7 @@
   register: overlay_guard_live
   changed_when: false
   become: true
+  when: not ansible_check_mode
 
 - name: Assert the overlay guard is live
   ansible.builtin.assert:
@@ -122,3 +181,4 @@
       - "('unreachable ' ~ overlay_guard_cidr) in overlay_guard_live.stdout"
     fail_msg: "overlay guard is NOT active on {{ inventory_hostname }}"
     success_msg: "overlay guard active on {{ inventory_hostname }}"
+  when: not ansible_check_mode

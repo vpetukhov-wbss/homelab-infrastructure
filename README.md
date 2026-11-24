@@ -114,7 +114,7 @@ flowchart LR
     lanhost(["any device on the LAN"])
     peer(["a wg1 peer"])
 
-    internet -- "TCP 2345<br/>the only router forward today" --> laptop["node4 SSH :2345<br/>keys only<br/>no firewall or Fail2Ban yet"]
+    internet -- "TCP 2345<br/>the only router forward today" --> laptop["node4 SSH :2345<br/>keys only · Fail2Ban"]
     internet -. "planned: one UDP port for WireGuard<br/>then 2345 is closed" .-> peer
 
     lanhost -- "SSH, LAN subnet only" --> nodessh["node1 :2222<br/>node2 :22 · node3 :22<br/>keys only · Fail2Ban"]
@@ -223,7 +223,7 @@ with unit tests. **It is not deployed yet**: machines join once the .NET receive
 accepts the contract. How it works, with sequence diagrams and flowcharts:
 [apps/homelab-pulse/README.md](apps/homelab-pulse/README.md).
 
-## Status on 2026-11-23
+## Status on 2026-11-24
 
 **Running, and checked against the live systems:**
 
@@ -238,11 +238,11 @@ accepts the contract. How it works, with sequence diagrams and flowcharts:
 
 **In development:** HomeLab Pulse (see above).
 
-**node4** was reinstalled headless on 2026-11-22 and is the controller again. It is not
-converged yet: no firewall, no Fail2Ban, no Docker, not on wg1. Its SSH (2345, keys only)
-is the one port the router forwards.
+**node4** was reinstalled headless on 2026-11-22 and is the controller again. Since
+2026-11-24 it has the firewall, the overlay guard and Fail2Ban; it has no Docker and is
+not on wg1 yet. Its SSH (2345, keys only) is the one port the router forwards.
 
-**Next:** bring node4 into the platform (firewall, Fail2Ban, Docker, wg1). After that come
+**Next:** bring node4 into the platform (Docker, wg1). After that come
 WireGuard remote access, and then MongoDB, Vaultwarden, LocalStack and monitoring on
 node4. Open security gaps are listed in [docs/security/posture.md](docs/security/posture.md).
 

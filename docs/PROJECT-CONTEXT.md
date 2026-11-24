@@ -141,8 +141,8 @@ The bind address still matters — it keeps ports off `0.0.0.0` — and the `app
 inside the ISP's network. Without `wg1`, traffic for the overlay would follow the
 default route there (Redis `AUTH` is clear text). The guard unit therefore also
 installs `unreachable 10.44.0.0/24 metric 4000`; `wg1`'s route wins whenever it is up.
-A machine that is not on the overlay (today: node4) must not talk to `10.44.0.x`, and
-node4 has neither `wg1` nor the guard's unreachable route yet.
+A machine that is not on the overlay (today: node4) must not talk to `10.44.0.x`. node4
+has had the guard's unreachable route since 2026-11-24, so such traffic fails locally.
 
 ### Edge
 
@@ -383,8 +383,13 @@ it down, run `clear`, and reply with "done" only.
   brought back node4's keys, vault password, repository and inventory, and every
   document still said "Fail2Ban on all four". On the new install ufw was disabled and
   Fail2Ban absent, because `security.yml` targets only the three servers and nothing had
-  converged node4. After any rebuild, check the controls themselves (`ufw status`,
-  `fail2ban-client status`), not the documents.
+  converged node4 (both were applied on 2026-11-24). After any rebuild, check the
+  controls themselves (`ufw status`, `fail2ban-client status`), not the documents.
+- **Ubuntu 26.04's Fail2Ban bans through nftables by default**
+  (`jail.d/defaults-debian.conf`), where `ufw` cannot see the ban. `jail.local` overrides
+  it and the role asserts the action. OpenSSH there logs from `sshd-session`, so a jail
+  matching only `_COMM=sshd` would miss those lines; this one also matches `ssh.service`. After
+  an OS upgrade, make one failed login and watch `fail2ban-client status sshd`.
 - **Every SSH session into node4 died with its connection, and Claude Code with it.**
   All nine sessions that ended between 2026-11-22 and 2026-11-24 ended with
   `Connection timed out` in sshd's journal; the owner closed none of them. sshd sent no
@@ -473,8 +478,7 @@ the relocation reverted.
   node3**. A full restore drill of the new archive format has not been done yet.
 - Key-only SSH, X11/agent forwarding off, SSH accepted from the LAN subnet and `wg1` only.
   Ansible verifies host keys.
-- Fail2Ban on the three servers; only loopback, overlay and the controller are exempt.
-  node4 had it before its reinstall and does not yet (see Outstanding).
+- Fail2Ban on all four; only loopback, overlay and the controller are exempt.
 - smartd on every server (all three HDDs PASSED, 0 reallocated/pending sectors);
   watchdog active on all three; Docker log rotation and `live-restore`; Docker starts
   after `wg1`. Every image pinned (`inventory/group_vars/all/images.yml`).
@@ -483,6 +487,8 @@ the relocation reverted.
   Wi-Fi on its old static address, sshd on 2345 offering `publickey` only, suspend,
   hibernate and the lid switch disabled. `homelab-restore` ran: from node4
   `ansible homelab -m ping` passes for all four and both ansible-vault files open.
+- **node4 firewalled on 2026-11-24**: ufw default deny, overlay guard, Fail2Ban and the
+  sshd hardening; tested from node1 and by a new login from outside, not yet by a reboot.
 
 ### Outstanding
 
@@ -492,7 +498,7 @@ the relocation reverted.
 | **node3 reboot (kernel -181 → -204, libc)** | Needs a controlled Redis failover first; failovers need the user's go-ahead. Runbook ready. |
 | **Pull the Windows USB stick out of node2** | Physical. node2 is on its newest kernel, so no reboot is pending. |
 | **100 Mb/s links, BIOS power-on-after-AC-loss** | Physical/BIOS. |
-| **node4 converged (roadmap M3)** | Reinstalled and restored 2026-11-22, but nothing has converged it: ufw is installed and disabled, Fail2Ban, Docker and `wg1` are absent, and so is the overlay guard with its unreachable route. Its SSH (2345, key-only) is Internet-forwarded with no firewall in front. Kernel -44 waits for a reboot. SSH from outside through the router works (2026-11-24). |
+| **node4 converged (roadmap M3)** | `security` and `fail2ban` applied 2026-11-24. Still to do: `base` and `host_hardening`, Docker, `wg1`, and the reboot onto kernel -44, which also proves that the firewall comes back. Its SSH (2345, key-only) stays open to any source until M4. |
 | **TLS, router forwards, remote access (WireGuard road warrior)** | Need a DNS name and a decision on which `wg0` to keep. |
 | **Backup key offline (`age`), off-site copy, restore drill** | Design decision on where the key and the off-site copy live. |
 | **Monitoring and metrics** | HomeLab Pulse, planned on node4; not deployed, and it sends no alerts yet. |
@@ -560,7 +566,7 @@ Secrets are `ansible-vault` files unlocked by `~/.homelab_vault_pass`, configure
 under the inventory names.
 
 Runbooks: `docs/runbooks/` — Vault init, Redis failover and rolling reboots, PostgreSQL
-promotion, restoring a backup, controller recovery.
+promotion, restoring a backup, controller recovery, node4's firewall with a rollback.
 
 Scripts: `scripts/set-homelab-password.sh` (re-key the vault to a password you choose),
 `scripts/make-recovery-bundle.sh` (encrypted controller bundle),
