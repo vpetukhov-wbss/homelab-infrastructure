@@ -18,6 +18,9 @@ all:
     wg_overlay_cidr: "10.44.0.0/24"
     lan_cidr: "192.0.2.0/24"            # SSH is accepted from this subnet and from wg1 only
     controller_lan_ip: 192.0.2.35       # exempt from Fail2Ban; update if its lease moves
+    # The owner's devices (docs/runbooks/remote-access.md). Public keys only.
+    # wg_remote_peers:
+    #   - {name: laptop, ip: 10.44.0.11, public_key: "..."}
   children:
     homelab:
       children:
@@ -48,4 +51,4 @@ all:
           hosts:
             node4-laptop:
               ansible_connection: local
-              wg_overlay_ip: 10.44.0.4  # reserved; node4 joins wg1 in roadmap M3
+              wg_overlay_ip: 10.44.0.4

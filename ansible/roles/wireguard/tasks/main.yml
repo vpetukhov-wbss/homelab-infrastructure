@@ -1,7 +1,16 @@
 ---
-# WireGuard overlay mesh (wg1 / 10.44.0.0/24) across the three wired servers.
-# Single play over all 3 hosts: linear strategy means every host's pubkey fact is
+# WireGuard overlay mesh (wg1 / 10.44.0.0/24) across all four machines.
+# Single play over all of them: linear strategy means every host's pubkey fact is
 # set before the template task runs, so the mesh config can reference all peers.
+# For the same reason the play never works with --limit.
+
+- name: Install the WireGuard tools
+  ansible.builtin.apt:
+    name: wireguard-tools
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
 
 - name: Ensure /etc/wireguard exists
   ansible.builtin.file:
@@ -27,12 +36,30 @@
   ansible.builtin.shell: "wg pubkey < /etc/wireguard/wg1.private"
   register: wg_pub
   changed_when: false
+  check_mode: false
   become: true
 
-- name: Register keys as host facts
+- name: Check the remote devices
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[a-z][a-z0-9-]{0,31}$')
+      - item.public_key is match('^[A-Za-z0-9+/]{43}=$')
+      - item.ip is match('^10\\.44\\.0\\.[0-9]{1,3}$')
+      - item.ip not in (wg_mesh_hosts | map('extract', hostvars, 'wg_overlay_ip') | list)
+      - wg_remote_peers | map(attribute='ip') | unique | length == wg_remote_peers | length
+      - wg_remote_peers | map(attribute='public_key') | unique | length == wg_remote_peers | length
+    fail_msg: "wg_remote_peers: invalid or duplicate entry"
+    quiet: true
+  loop: "{{ wg_remote_peers }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# node4 connects locally, so its ansible_host is the inventory name, not an address.
+- name: Register keys and the endpoint as host facts
   ansible.builtin.set_fact:
     wg_private_key: "{{ wg_priv_raw.content | b64decode | trim }}"
     wg_public_key: "{{ wg_pub.stdout | trim }}"
+    wg_endpoint_ip: "{{ controller_lan_ip if ansible_connection | default('ssh') == 'local' else ansible_host }}"
   no_log: true
 
 # diff: false — `--diff` would otherwise print the private key into the run output.
@@ -43,7 +70,7 @@
     mode: "0600"
   become: true
   diff: false
-  notify: restart wg1
+  notify: Reload wg1
 
 - name: Enable + start wg1
   ansible.builtin.systemd:
@@ -51,3 +78,57 @@
     enabled: true
     state: started
   become: true
+
+- name: Apply a pending reload before verifying
+  ansible.builtin.meta: flush_handlers
+
+# --- Effective state -------------------------------------------------------------
+- name: Read the live peers
+  ansible.builtin.command: wg show wg1 peers
+  register: wg_live_peers
+  changed_when: false
+  become: true
+  when: not ansible_check_mode
+
+- name: Assert that the live peers are exactly the mesh and the remote devices
+  ansible.builtin.assert:
+    that: >-
+      wg_live_peers.stdout_lines | sort
+      == ((wg_mesh_hosts | difference([inventory_hostname]) | map('extract', hostvars, 'wg_public_key') | list)
+      + (wg_remote_peers | map(attribute='public_key') | list)) | sort
+    fail_msg: "wg1 on {{ inventory_hostname }} has a missing or a stale peer"
+    quiet: true
+  when: not ansible_check_mode
+
+# Bound to wg1: the overlay range also exists inside the ISP's network, so an unbound
+# ping can be answered from there while the tunnel is down.
+- name: Reach every peer through the tunnel
+  ansible.builtin.command: ping -I wg1 -c 1 -W 2 {{ hostvars[item].wg_overlay_ip }}
+  loop: "{{ wg_mesh_hosts | difference([inventory_hostname]) }}"
+  register: wg_ping
+  changed_when: false
+  become: true
+  retries: 5
+  delay: 3
+  until: wg_ping.rc == 0
+
+- name: Publish the peer list for the owner's devices on the controller
+  when: "'controller' in group_names"
+  block:
+    - name: Create the directory for the remote devices' files
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/homelab-remote"
+        state: directory
+        mode: "0700"
+
+    - name: Write the peer list (public keys only)
+      ansible.builtin.template:
+        src: peers.conf.j2
+        dest: "{{ ansible_env.HOME }}/homelab-remote/peers.conf"
+        mode: "0600"
+
+    - name: Copy the client script next to it
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../scripts/make-wg-client.sh"
+        dest: "{{ ansible_env.HOME }}/homelab-remote/make-wg-client.sh"
+        mode: "0700"

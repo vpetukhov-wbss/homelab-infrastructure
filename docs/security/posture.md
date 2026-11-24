@@ -19,14 +19,14 @@ What each machine listens on, and from where it can be reached.
 | node1-gateway | 2222 SSH (LAN subnet + legacy `wg0` only), 80, 443 Caddy | 2022 SFTP, 8200 Vault, 26379 Sentinel, 5672 + 15672 RabbitMQ | — |
 | node2-data-replica | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel | — |
 | node3-data | 22 SSH (LAN subnet only) | 5432 PostgreSQL, 6379 Redis, 26379 Sentinel, 8080 nginx, 3000 + 2223 Gitea | — |
-| node4 (laptop) | 2345 SSH from any source, including the router forward (the tracked exception); 51821/udp allowed, nothing listens until `wg1` | — (not on `wg1` yet) | — |
+| node4 (laptop) | 2345 SSH from any source, including the router forward (the tracked exception), 51821/udp WireGuard | — (no service published yet) | — |
 
 node4 was reinstalled on 2026-11-22. Since 2026-11-24 it has `ufw` (default deny),
 Fail2Ban, the overlay guard with its unreachable route, and the same sshd hardening as
 the servers. Verified: from node1, 2345 is open and a listener on another port is blocked;
-`sshd -T`; a new login from outside. It is not on `wg1`, so the LAN-route test has nothing
-to reach there yet, and a reboot has not yet proven that the controls come back
-(roadmap M3).
+`sshd -T`; a new login from outside. It joined `wg1` the same day: a test listener on
+`10.44.0.4` answered node2 over the tunnel and was blocked over the LAN, with the guard's
+drop counter rising. A reboot has not yet proven that the controls come back (roadmap M3).
 
 ## The overlay guard — the control that actually keeps services private
 

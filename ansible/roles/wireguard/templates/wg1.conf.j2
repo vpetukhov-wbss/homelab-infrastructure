@@ -3,14 +3,21 @@
 Address = {{ wg_overlay_ip }}/24
 PrivateKey = {{ wg_private_key }}
 ListenPort = 51821
-{% for host in (groups['edge'] + groups['data_primary'] + groups['data_replica']) %}
+{% for host in wg_mesh_hosts %}
 {% if host != inventory_hostname %}
 
 [Peer]
 # {{ host }}
 PublicKey = {{ hostvars[host].wg_public_key }}
 AllowedIPs = {{ hostvars[host].wg_overlay_ip }}/32
-Endpoint = {{ hostvars[host].ansible_host }}:51821
+Endpoint = {{ hostvars[host].wg_endpoint_ip }}:51821
 PersistentKeepalive = 25
 {% endif %}
+{% endfor %}
+{% for peer in wg_remote_peers %}
+
+[Peer]
+# {{ peer.name }} (remote access)
+PublicKey = {{ peer.public_key }}
+AllowedIPs = {{ peer.ip }}/32
 {% endfor %}

@@ -24,7 +24,7 @@ One owner, four machines:
 | node1 | Caddy, Vault, SFTP, RabbitMQ, Sentinel, backup job | + WireGuard endpoint for remote access, TLS at the edge |
 | node2 | PostgreSQL primary, Redis, Sentinel | unchanged |
 | node3 | PostgreSQL standby, Redis, Sentinel, app host, Gitea + runner, SFTP mirror, backup copy | unchanged |
-| node4 | reinstalled headless 2026-11-22: controller on Wi-Fi, firewall and Fail2Ban since 2026-11-24, not on the overlay | headless server on `wg1` (10.44.0.4): controller + MongoDB 8, Vaultwarden, LocalStack, monitoring |
+| node4 | reinstalled headless 2026-11-22: controller on Wi-Fi, firewall, Fail2Ban and `wg1` since 2026-11-24 | headless server on `wg1` (10.44.0.4): controller + MongoDB 8, Vaultwarden, LocalStack, monitoring |
 
 **Why node4 gets the new services.** It has the only CPU with AVX, which MongoDB 5.0+
 requires. It also has the only SSD and the most RAM (7.3 GB). CI stays on node3 so that
@@ -129,9 +129,9 @@ the password manager never shares a host with CI jobs.
 
 ## M3 — node4 joins the platform
 
-- [ ] Add node4 to the mesh as `wg_overlay_ip: 10.44.0.4`, so `wg1` grows from 3 to 4
-  peers. The `wireguard` and `redis_topology` roles list the three servers explicitly
-  today.
+- [x] Add node4 to the mesh as `10.44.0.4` (2026-11-24). During the change the three
+  server tunnels lost 0 of ~680 pings and did not restart; PostgreSQL lag 0, three
+  Sentinels agreed. Sentinels and replication stay on the three servers.
 - [x] Apply `security` and `fail2ban` to node4 (2026-11-24, with a rollback timer:
   [runbook](runbooks/firewall-with-rollback.md)). The `firewall` role reads the SSH port
   from `sshd -T`, and node4 has an explicit any-source exception for 2345. Verified: from
@@ -150,23 +150,27 @@ the password manager never shares a host with CI jobs.
   node4, `ansible node4-laptop -b` becomes root.
 - [x] The owner's terminal survives a dropped connection (2026-11-24): role
   `persistent_session`, plus the sshd keepalive (30 s) on node4, checked with `sshd -T`.
-- [ ] Make the `wireguard` role ready for a fourth peer that connects locally:
-  - the `Endpoint` comes from `ansible_host`, which node4 does not have;
-  - the handler restarts `wg1` on every peer whenever a peer is added. A reload
-    (`wg syncconf`) adds node4 without dropping the tunnels under PostgreSQL and Redis.
+- [x] Make the `wireguard` role ready for a fourth peer that connects locally
+  (2026-11-24): the endpoint no longer comes from `ansible_host`, the handler reloads
+  instead of restarting, and the role asserts the live peers and pings each through `wg1`.
 - [ ] Reboot node4 onto kernel -44 (a reboot has been pending since 2026-11-23). It also
   proves that `ufw`, Fail2Ban, `wg1` and the guard come back on their own.
 
 **Done when:**
 
-- node4 reaches every node over `wg1`;
-- the overlay guard is live on node4, and the LAN-route test is blocked there too.
+- node4 reaches every node over `wg1` (**passes**, 2026-11-24);
+- the overlay guard is live on node4, and the LAN-route test is blocked there too
+  (**passes**, 2026-11-24).
 
 ## M4 — Remote access over WireGuard
 
-- [ ] Decide where the endpoint lives, and what happens to the laptop's legacy `wg0`
-  (10.10.10.0/24).
-- [ ] Add road-warrior peers for the owner's devices. The router forwards one UDP port.
+- [x] Decide where the endpoint lives (owner, 2026-11-24): on every node. A device peers
+  with each node directly, so no node forwards traffic and no node is a single point of
+  failure.
+- [ ] Decide what happens to the laptop's legacy `wg0` (10.10.10.0/24).
+- [ ] Add the owner's devices (Linux, macOS, iPhone). The role, the client script and the
+  [runbook](runbooks/remote-access.md) are ready; the devices' public keys are missing.
+- [ ] The owner adds four UDP forwards on the router, one per node.
 - [ ] Remove the router's SSH forward to the laptop.
 
 **Done when:**
@@ -265,7 +269,6 @@ password alone.
 |---|---|---|
 | A domain for TLS | a public name with Let's Encrypt (HTTP-01 needs port 80 forwarded; DNS-01 needs a DNS API); or Caddy's internal CA for WireGuard-only use | M6, Vaultwarden |
 | LocalStack | free Hobby tier with an auth token (non-commercial use only); the last community image, pinned and frozen; or Moto, an open-source AWS mock | M5 LocalStack |
-| Remote-access endpoint | node1, which is wired and always on (recommended); or node4 | M4 |
 | Off-site backups | where they go (a cloud bucket or a second location) and who holds the key | M8 |
 | Who sees the Pulse dashboard | WireGuard only, as the goal says (recommended until M6); or public behind Caddy with TLS, which its anonymous read endpoints are written for | M5 monitoring |
 

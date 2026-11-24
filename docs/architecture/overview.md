@@ -27,7 +27,7 @@ Two constraints shape every decision here, and both are hardware-imposed:
 | `node1-gateway` | 192.168.0.101 (also .23) | 10.44.0.1 | Ubuntu 22.04.5 | Edge: Caddy, Vault, SFTP primary, Sentinel, RabbitMQ, backup job |
 | `node2-data-replica` | 192.168.0.28 | 10.44.0.2 | Ubuntu 24.04 | PostgreSQL **primary**, Redis, Sentinel |
 | `node3-data` | 192.168.0.103 | 10.44.0.3 | Ubuntu 22.04.5 | PostgreSQL standby, Redis, SFTP mirror, Sentinel, **app host** (nginx + SQLite) |
-| laptop (`node4`) | 192.168.0.35 (Wi-Fi, static) | *(reserved 10.44.0.4, not joined)* | Ubuntu 26.04.1 | Ansible + Claude Code controller, headless since 2026-11-22; joins the platform in [roadmap](../roadmap.md) M3 |
+| laptop (`node4`) | 192.168.0.35 (Wi-Fi, static) | 10.44.0.4 | Ubuntu 26.04.1 | Ansible + Claude Code controller, headless since 2026-11-22; joins the platform in [roadmap](../roadmap.md) M3 |
 
 **Host and container names do not reliably indicate current role.** After a Redis
 failover the names invert: `node2-data-replica` holds the PostgreSQL *primary*, and
@@ -56,13 +56,13 @@ Nothing in this platform may depend on the LAN being private.
 
 ### Overlay
 
-WireGuard `wg1`, `10.44.0.0/24`, a **full mesh** between node1, node2 and node3 —
-not hub-and-spoke, so any one node can fail without partitioning the other two.
+WireGuard `wg1`, `10.44.0.0/24`, a **full mesh** between all four machines —
+not hub-and-spoke, so any one node can fail without partitioning the others.
 Each peer carries a single `/32` `AllowedIPs`. Every database, Vault and SFTP socket
 binds to the overlay address only.
 
-node4 is in the inventory as `10.44.0.4` but **has no `wg1` interface yet**; it
-reaches the fleet over the LAN via SSH. The laptop's unrelated legacy `wg0`
+node4 joined `wg1` as `10.44.0.4` on 2026-11-24; Ansible still reaches the fleet over the
+LAN via SSH. The laptop's unrelated legacy `wg0`
 (`10.10.10.0/24`) was carried over by the restore into
 `/etc/wireguard/restored-from-laptop/` and is not active.
 
@@ -253,8 +253,8 @@ containers without the Docker socket.
   consumers are roadmap M7.
 - **node4.** Reinstalled headless on 2026-11-22 (installer in `installer/`) and the
   controller again, with the firewall, overlay guard and Fail2Ban since 2026-11-24;
-  no Docker or `wg1` yet (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
-  and monitoring (M5). Until M3 it is not on the overlay (`10.44.0.4` reserved).
+  no Docker yet (roadmap M3). Then it hosts MongoDB 8 (the only AVX machine), LocalStack, Vaultwarden
+  and monitoring (M5). On `wg1` since 2026-11-24.
 - **Remote access over WireGuard.** Today the owner's only remote path is SSH to
   node4 through a router forward (port 2345), a tracked gap.
 - **TLS at the edge.** Caddy listens on `:443` but no TLS site is configured; the
