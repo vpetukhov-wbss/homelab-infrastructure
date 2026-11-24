@@ -1,0 +1,12 @@
+// Managed by Ansible (homelab). Prints one fact per line for the role to assert.
+let unauthenticated = "open";
+try { db.adminCommand({ listDatabases: 1 }).ok || (unauthenticated = "refused"); } catch (e) { unauthenticated = "refused"; }
+print("unauthenticated=" + unauthenticated);
+db.getSiblingDB("admin").auth("root", process.env.MONGO_ROOT_PASSWORD);
+print("state=" + rs.status().members.map(m => m.stateStr).join(","));
+print("cache=" + db.serverStatus().wiredTiger.cache["maximum bytes configured"]);
+const c = new Mongo("mongodb://127.0.0.1:{{ mongodb_port }}/?directConnection=true").getDB("admin");
+c.auth("backup", process.env.MONGO_BACKUP_PASSWORD);
+let write = "allowed";
+try { c.getSiblingDB("homelab_verify").x.insertOne({ a: 1 }); } catch (e) { write = "refused"; }
+print("backup_write=" + write);

@@ -26,7 +26,7 @@ OVERLAY_PREFIX="{{ (wg_overlay_cidr | default('10.44.0.0/24')).split('.')[:3] | 
 TMP="$(mktemp -d)"
 STATUS=0
 OUT="$DEST/homelab-$STAMP.tar.gz.enc"
-cleanup() { rm -rf "$TMP"; rm -f "$OUT.part"; }
+cleanup() { rm -rf "$TMP"; rm -f "$OUT.part" "${MONGO_CONF:-}"; }
 trap cleanup EXIT
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -112,6 +112,28 @@ tar -C "{{ backup_sftp_dir }}" -cf "$TMP/sftp-tree.tar" . && log "SFTP tree: $(d
 # This node's WireGuard identity (private keys — the archive is encrypted).
 tar -C /etc -cf "$TMP/etc-wireguard.tar" wireguard && log "WireGuard config: saved"
 
+{% if backup_mongodb_enabled %}
+# --- 4d. MongoDB on node4 -----------------------------------------------------
+# A warning, not fatal: node4 is a laptop on Wi-Fi, and its absence must not cost the
+# other dumps. --oplog makes the dump consistent as of its end. The password goes in a
+# config file outside the archived directory, never in argv.
+MONGO_CONF="$(mktemp)"
+chmod 600 "$MONGO_CONF"
+printf 'password: "%s"\n' "$MONGO_BACKUP_PASSWORD" > "$MONGO_CONF"
+# --entrypoint: the image's own would run mongodump as uid 999, which can read neither file.
+if docker run --rm --entrypoint mongodump -v "$MONGO_CONF:/run/mongo.yaml:ro" -v "$TMP:/out" {{ mongodb_image }} \
+     --config /run/mongo.yaml --host {{ backup_mongodb_host }} --port {{ backup_mongodb_port }} \
+     --username backup --authenticationDatabase admin --oplog --gzip --archive=/out/mongodb.archive.gz \
+     2>"$TMP/mongo.log" && [ -s "$TMP/mongodb.archive.gz" ]; then
+  log "MongoDB dump: $(du -h "$TMP/mongodb.archive.gz" | cut -f1)"
+else
+  log "WARN: MongoDB dump failed: $(tail -n 2 "$TMP/mongo.log" | tr '\n' ' ')"
+  rm -f "$TMP/mongodb.archive.gz"
+  STATUS=1
+fi
+rm -f "$MONGO_CONF" "$TMP/mongo.log"
+
+{% endif %}
 # --- 5. archive and encrypt (to .part; only a verified archive gets its name) -
 # There is no disk encryption on these machines, so the archive is encrypted at rest.
 tar -C "$TMP" -czf - . \

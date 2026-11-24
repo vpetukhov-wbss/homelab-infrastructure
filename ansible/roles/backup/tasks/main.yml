@@ -37,6 +37,9 @@
       REDIS_PASSWORD='{{ vault_redis_password }}'
       RABBIT_USER='{{ rabbitmq_user | default("homelab") }}'
       RABBIT_PASSWORD='{{ vault_rabbitmq_password }}'
+      {% if backup_mongodb_enabled %}
+      MONGO_BACKUP_PASSWORD='{{ vault_mongodb_backup_password }}'
+      {% endif %}
     dest: "{{ backup_secrets_dir }}/backup.env"
     owner: root
     group: root

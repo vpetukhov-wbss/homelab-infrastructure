@@ -1,0 +1,118 @@
+---
+- name: Check that the CPU has AVX (MongoDB 5.0+ does not start without it)
+  ansible.builtin.command: grep -qw avx /proc/cpuinfo
+  changed_when: false
+
+- name: Create the stack directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /opt/homelab, owner: root, mode: "0755" }
+    - { path: "{{ mongodb_stack_dir }}", owner: root, mode: "0700" }
+    - { path: "{{ mongodb_stack_dir }}/secrets", owner: "{{ mongodb_uid }}", mode: "0500" }
+
+# Internal authentication of the replica set. Generated here, never leaves the node; a
+# rebuilt node can have a new one.
+- name: Generate the replica set key (once)
+  ansible.builtin.shell:
+    cmd: umask 077; openssl rand -base64 756 > {{ mongodb_stack_dir }}/secrets/keyfile
+    creates: "{{ mongodb_stack_dir }}/secrets/keyfile"
+
+- name: Install the root password for the first start
+  ansible.builtin.copy:
+    content: "{{ vault_mongodb_root_password }}"
+    dest: "{{ mongodb_stack_dir }}/secrets/root.pass"
+    mode: "0400"
+  no_log: true
+  diff: false
+
+- name: Own the secrets as the container's user
+  ansible.builtin.file:
+    path: "{{ mongodb_stack_dir }}/secrets/{{ item }}"
+    owner: "{{ mongodb_uid }}"
+    group: "{{ mongodb_uid }}"
+    mode: "0400"
+  loop: [keyfile, root.pass]
+
+- name: Template the Compose file and the scripts
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ mongodb_stack_dir }}/{{ item }}"
+    mode: "0600"
+  loop: [docker-compose.yml, setup.js, verify.js]
+
+- name: Deploy MongoDB
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ mongodb_stack_dir }}"
+  register: mongodb_up
+  changed_when: "'Started' in mongodb_up.stderr or 'Created' in mongodb_up.stderr"
+
+# mongod refuses to start on some kernels, and says so only in its log.
+- name: Wait until mongod answers, or show why it does not
+  block:
+    - name: Wait until mongod answers
+      ansible.builtin.command: >-
+        docker exec {{ mongodb_container }} mongosh --quiet --norc --host {{ wg_overlay_ip }}
+        --port {{ mongodb_port }} --eval "db.adminCommand('ping').ok"
+      register: mongodb_ping
+      until: mongodb_ping.rc == 0
+      retries: 18
+      delay: 5
+      changed_when: false
+  rescue:
+    - name: Read the last log line
+      ansible.builtin.command: docker logs --tail 1 {{ mongodb_container }}
+      register: mongodb_log
+      changed_when: false
+
+    - name: Stop with mongod's own reason
+      ansible.builtin.fail:
+        msg: "{{ (mongodb_log.stdout ~ mongodb_log.stderr)[:600] }}"
+
+# The script is read from stdin, so nothing needs to be mounted into the container.
+- name: Initiate the replica set and the backup account
+  ansible.builtin.shell:
+    cmd: >-
+      docker exec -i -e MONGO_ROOT_PASSWORD -e MONGO_BACKUP_PASSWORD {{ mongodb_container }}
+      mongosh --quiet --norc --port {{ mongodb_port }} --file /dev/stdin < {{ mongodb_stack_dir }}/setup.js
+  environment: &mongodb_passwords
+    MONGO_ROOT_PASSWORD: "{{ vault_mongodb_root_password }}"
+    MONGO_BACKUP_PASSWORD: "{{ vault_mongodb_backup_password }}"
+  register: mongodb_setup
+  changed_when: "'CHANGED' in mongodb_setup.stdout"
+  no_log: true
+
+# --- Effective state -------------------------------------------------------------
+- name: Read the effective state
+  ansible.builtin.shell:
+    cmd: >-
+      docker exec -i -e MONGO_ROOT_PASSWORD -e MONGO_BACKUP_PASSWORD {{ mongodb_container }}
+      mongosh --quiet --norc --port {{ mongodb_port }} --file /dev/stdin < {{ mongodb_stack_dir }}/verify.js
+  environment: *mongodb_passwords
+  register: mongodb_state
+  changed_when: false
+  no_log: true
+
+- name: Read the listening sockets
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      ss -Hltn 'sport = :{{ mongodb_port }}' | awk '{print $4}' | sort
+    executable: /bin/bash
+  register: mongodb_sockets
+  changed_when: false
+
+- name: Assert authentication, the primary, the cache cap and the bind addresses
+  ansible.builtin.assert:
+    that:
+      - "'unauthenticated=refused' in mongodb_state.stdout_lines"
+      - "'state=PRIMARY' in mongodb_state.stdout_lines"
+      - "('cache=' ~ (mongodb_cache_gb | int * 1024 ** 3)) in mongodb_state.stdout_lines"
+      - "'backup_write=refused' in mongodb_state.stdout_lines"
+      - mongodb_sockets.stdout_lines == ([wg_overlay_ip ~ ':' ~ mongodb_port, '127.0.0.1:' ~ mongodb_port] | sort)
+    fail_msg: "{{ mongodb_state.stdout_lines }} / {{ mongodb_sockets.stdout_lines }}"

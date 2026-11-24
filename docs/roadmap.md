@@ -191,6 +191,9 @@ Each service goes through `/service-onboard`, which produces:
 - a row in the service catalog.
 
 - [ ] **MongoDB 8**: a single-node replica set, so transactions and change streams work.
+  The role and the backup step are written and were tried on node4 with MongoDB 7.0 and
+  throwaway passwords (2026-11-24): idempotent, authentication enforced, a dump, drop and
+  restore returned 500 of 500 documents. Blocked by node4's kernel until the M3 reboot.
   No HA is claimed. WiredTiger cache capped; `mongodump` in the nightly backup.
 - [ ] **LocalStack**: licensing decision first (see below).
 - [ ] **Monitoring**: HomeLab Pulse (decided 2026-11-24, instead of Prometheus and

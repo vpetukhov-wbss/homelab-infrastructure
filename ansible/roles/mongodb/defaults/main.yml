@@ -1,0 +1,11 @@
+---
+# MongoDB as a single-node replica set: transactions and change streams work, and no high
+# availability is claimed. It needs a CPU with AVX, which only node4 has.
+mongodb_container: mongodb
+mongodb_stack_dir: /opt/homelab/mongodb   # root-owned: the owner's account must not replace it
+mongodb_port: 27017
+mongodb_replset: homelab
+# node4 also runs the controller and the other planned services (roadmap M5).
+mongodb_cache_gb: 1
+mongodb_memory_limit: 1536m
+mongodb_uid: "999"                        # the mongodb user of the official image

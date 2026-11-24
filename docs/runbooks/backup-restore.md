@@ -36,11 +36,31 @@ it with `-pass stdin` rather than putting it on a command line.
 | `rabbitmq-definitions.json` | `rabbitmqctl import_definitions rabbitmq-definitions.json` (topology only, not messages) |
 | `node3-exports/sqlite/*` | Stop the app, copy into `~/stacks/apphost/sqlite/` on node3 |
 | `node3-exports/gitea-dump.zip` | Gitea's own dump: repositories, database, `app.ini` (holds the Actions secret key). Follow Gitea's "restore from dump" steps for 1.22 |
+| `mongodb.archive.gz` | Once MongoDB is deployed; see [below](#mongodb) |
 | `sftp-tree.tar` | Into node1's `~/stacks/edge/sftp_data/` (owner 1001:1001) |
 | `etc-wireguard.tar` | node1's `/etc/wireguard` (private keys) — only when rebuilding node1 |
 
 Run every restore into the **current primary/master** — discover them first
 (`redis-failover-and-reboots.md`), never assume node2.
+
+## MongoDB
+
+Not deployed yet; this was tried with MongoDB 7.0 on node4 (2026-11-24). Run as root on
+node4, from the directory that holds the decrypted archive. The password goes in a file,
+never on the command line, and `--entrypoint` matters: the image's own drops to uid 999.
+
+~~~bash
+C=$(mktemp); read -rsp 'MongoDB root password: ' P; printf 'password: "%s"\n' "$P" > "$C"; unset P
+docker run --rm --network host --entrypoint mongorestore -v "$C:/run/m.yaml:ro" -v "$PWD:/r:ro" \
+  <mongodb_image from inventory/group_vars/all/images.yml> \
+  --config /run/m.yaml --host 10.44.0.4 --username root --authenticationDatabase admin \
+  --gzip --archive=/r/mongodb.archive.gz --nsInclude '<database>.*'
+rm -f "$C"
+~~~
+
+Expect `N document(s) restored successfully. 0 document(s) failed to restore.` Add `--drop`
+to replace existing collections. For the whole instance at the dump's end point, leave out
+`--nsInclude` and add `--oplogReplay`; that variant has not been tried.
 
 ## Drill (do this; an untested backup is a guess)
 

@@ -12,3 +12,4 @@ rabbitmq_image: "rabbitmq:3.13.7-management-alpine"
 app_nginx_image: "nginx:1.27.5-alpine"
 gitea_image: "gitea/gitea:1.22.6"
 gitea_runner_image: "gitea/act_runner:0.6.1"
+mongodb_image: "mongo:8.0.38-noble"   # the 8.0 major-release line

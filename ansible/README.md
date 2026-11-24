@@ -55,6 +55,7 @@ instead of trusting names.
 | `gitea.yml` | node3 | `gitea` | Registers the runner and waits until it is declared |
 | `sftp-mirror.yml` | node3; node1 | `node_exports`; `sftp_mirror` | Sync account and exports first, then the mirror (needs `edge.yml`) |
 | `backup.yml` | node1 | `backup` | Runs after every service: it snapshots what they created |
+| `mongodb.yml` | node4 | `mongodb` | Written, not deployed and not in `site.yml` yet (roadmap M5) |
 | `controller.yml` | node4 | `persistent_session` | User-level, needs no become password |
 
 On a machine built from scratch, this order matters. node3's exports snapshot Gitea and

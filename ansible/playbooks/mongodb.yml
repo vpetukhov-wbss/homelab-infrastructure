@@ -1,0 +1,9 @@
+---
+# MongoDB on node4 (single-node replica set, overlay only). Everything runs as root: the
+# owner's account is not in the docker group there.
+- name: MongoDB
+  hosts: controller
+  become: true
+  gather_facts: true
+  roles:
+    - mongodb

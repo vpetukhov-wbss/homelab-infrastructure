@@ -47,7 +47,7 @@ table before proposing anything.
 | Kernel | 5.15.0-204 | 6.8.0-149 | 5.15.0-181 | 7.0.0-30 (-44 installed, reboot pending) |
 | NIC | `eno1`, wired | `eno1`, wired | `enp0s25`, wired | `wlp5s0` **Wi-Fi** (`enp0s31f6` unplugged) |
 | LAN | 192.168.0.101 **and** .23 | 192.168.0.28 | 192.168.0.103 | 192.168.0.35 |
-| Overlay | 10.44.0.1 | 10.44.0.2 | 10.44.0.3 | *(none — see §9)* |
+| Overlay | 10.44.0.1 | 10.44.0.2 | 10.44.0.3 | 10.44.0.4 |
 | SSH port | **2222** | 22 | 22 | **2345** |
 
 Two more measured facts, both found on 2026-11-21:
@@ -385,6 +385,15 @@ it down, run `clear`, and reply with "done" only.
   Fail2Ban absent, because `security.yml` targets only the three servers and nothing had
   converged node4 (both were applied on 2026-11-24). After any rebuild, check the
   controls themselves (`ufw status`, `fail2ban-client status`), not the documents.
+- **MongoDB 8.0 refuses to start on Linux 6.19.0 to 7.0.13** (SERVER-121912), and node4's
+  7.0.0-30 is upstream 7.0.12 (`/proc/version_signature`; `uname -r` hides it). The reason
+  is only in the container's log, so the role prints it. Kernel -44 carries 7.0.14, and
+  MongoDB 8.0.37+ exempts Ubuntu kernels from 7.0.14 on (SERVER-131779); not yet tried.
+- **The `mongo` image runs any `mongo*` command as uid 999**, so a root container's
+  `mongodump` could read neither its 0600 config nor the output directory. Use
+  `--entrypoint mongodump`. `--quiet` hides the error as well.
+- **A container on node4's bridge cannot reach `10.44.0.4`**: it arrives in INPUT from the
+  bridge, and ufw admits only `wg1` and loopback.
 - **systemd's sandboxing is ignored without an error in user units on node4.**
   `systemd-run --user -p ProtectHome=tmpfs` left `~/.ssh` readable, because Ubuntu
   restricts unprivileged user namespaces. Only a system unit isolates; prove it by testing

@@ -1,0 +1,25 @@
+// Managed by Ansible (homelab). Passwords arrive in the environment, never in argv.
+const admin = db.getSiblingDB("admin");
+admin.auth("root", process.env.MONGO_ROOT_PASSWORD);
+try {
+  rs.status();
+} catch (e) {
+  if (e.codeName !== "NotYetInitialized") throw e;
+  rs.initiate({ _id: "{{ mongodb_replset }}", members: [{ _id: 0, host: "{{ wg_overlay_ip }}:{{ mongodb_port }}" }] });
+  print("CHANGED replica set initiated");
+}
+for (let i = 0; i < 60 && !db.hello().isWritablePrimary; i++) sleep(1000);
+if (!db.hello().isWritablePrimary) throw new Error("not a writable primary");
+// The backup job's account can read everything and write nothing.
+const pwd = process.env.MONGO_BACKUP_PASSWORD;
+if (!admin.getUser("backup")) {
+  admin.createUser({ user: "backup", pwd, roles: ["backup"] });
+  print("CHANGED backup user created");
+} else {
+  try {
+    new Mongo("mongodb://127.0.0.1:{{ mongodb_port }}/?directConnection=true").getDB("admin").auth("backup", pwd);
+  } catch (e) {
+    admin.changeUserPassword("backup", pwd);
+    print("CHANGED backup password");
+  }
+}
