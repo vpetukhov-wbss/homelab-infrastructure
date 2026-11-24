@@ -160,6 +160,13 @@ def render(serial: str, keys: list[str], schema: Path | None, wifi: dict | None,
             "install -m 0644 /cdrom/homelab/homelab-restore-hint.sh /target/etc/profile.d/zz-homelab-restore.sh",
         ]
 
+    # Keep idle sessions alive through NAT (the owner works over the router forward) until
+    # ssh_hardening converges the host; its 00-homelab-hardening.conf carries the same values.
+    ai["late-commands"] += [
+        "printf 'ClientAliveInterval 30\\nClientAliveCountMax 10\\n'"
+        " > /target/etc/ssh/sshd_config.d/00-homelab-keepalive.conf",
+    ]
+
     if ssh_port != 22:
         # Classic ssh.service instead of socket activation, so sshd itself reads Port and
         # nothing depends on the socket generator - the same setup the laptop ran before.

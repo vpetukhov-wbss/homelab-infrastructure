@@ -26,8 +26,11 @@
       AllowTcpForwarding local
       MaxAuthTries 3
       LoginGraceTime 30
-      ClientAliveInterval 300
-      ClientAliveCountMax 2
+      # A probe every 30 s keeps an idle session's NAT mapping open (an idle admin
+      # session through the router froze at 300 s); a client silent for 10 probes
+      # (5 min) is dropped. Must match 00-homelab-keepalive.conf from the installer.
+      ClientAliveInterval 30
+      ClientAliveCountMax 10
     mode: "0644"
   become: true
   notify: restart ssh
@@ -66,6 +69,9 @@
       - "'allowagentforwarding no' in sshd_effective.stdout"
       - "'allowtcpforwarding local' in sshd_effective.stdout"
       - "'maxauthtries 3' in sshd_effective.stdout"
+      # Whole-line match: a substring test would accept 'clientaliveinterval 300'.
+      - "'clientaliveinterval 30' in sshd_effective.stdout_lines"
+      - "'clientalivecountmax 10' in sshd_effective.stdout_lines"
     fail_msg: >-
       sshd is NOT key-only on {{ inventory_hostname }}. Another drop-in in
       /etc/ssh/sshd_config.d/ probably sorts earlier and wins — check for
