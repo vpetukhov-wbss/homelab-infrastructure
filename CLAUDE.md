@@ -154,6 +154,7 @@ README is the entry point. When behaviour changes, update the document that owns
 | where a secret lives or how it is recovered | `docs/security/secrets-management.md` |
 | an operational procedure | `docs/runbooks/` |
 | a milestone done or a decision made | `docs/roadmap.md` |
+| something only the owner can do, or did | `docs/owner-checklist.md` (Bulgarian) |
 | a trap that cost debugging time | `docs/PROJECT-CONTEXT.md` §7 |
 
 Everywhere, distinguish deployed, planned and cut.
