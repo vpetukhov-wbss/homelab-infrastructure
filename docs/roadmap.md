@@ -256,14 +256,12 @@ been drilled.
 **Done when** the whole platform can be restored from the off-site copy and the paper
 password alone.
 
-## The owner's physical tasks
+## The owner's tasks
 
-- [ ] Remove the Windows installer USB stick from node2.
-- [ ] Find out why every server links at 100 Mb/s (cables or switch).
-- [ ] Set BIOS "power on after AC loss" on every machine; consider a UPS.
-- [ ] Add DHCP reservations for every machine. node4 pins 192.168.0.35 itself; reserve
-  it for node4's Wi-Fi MAC as well, so the router never leases it to another device.
-- [ ] Use a Wi-Fi password longer than 8 characters, then rebuild the stick.
+They live in [owner-checklist.md](owner-checklist.md), in Bulgarian and with exact steps:
+the first Gitea account, node4's reboot, the router forwards, WireGuard on the owner's
+devices, and the physical tasks (the USB stick in node2, the 100 Mb/s links, BIOS
+power-on after AC loss, DHCP reservations, a longer Wi-Fi password).
 
 ## Backlog (no milestone)
 

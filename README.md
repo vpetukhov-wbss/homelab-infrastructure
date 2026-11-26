@@ -281,6 +281,7 @@ docs/         handover context, architecture, security, roadmap, runbooks
 | [docs/PROJECT-CONTEXT.md](docs/PROJECT-CONTEXT.md) | **Start here.** Hardware, placement reasoning, traps, incidents, current state |
 | [docs/architecture/overview.md](docs/architecture/overview.md) | Topology, data flows, service catalog |
 | [docs/roadmap.md](docs/roadmap.md) | Goal, milestones, decisions still open |
+| [docs/owner-checklist.md](docs/owner-checklist.md) | What only the owner can do, step by step (in Bulgarian) |
 | [docs/security/posture.md](docs/security/posture.md) | Verified controls and open gaps |
 | [docs/security/secrets-management.md](docs/security/secrets-management.md) | Where every secret lives and how it comes back |
 | [ansible/README.md](ansible/README.md) | Roles, playbooks, run order |
