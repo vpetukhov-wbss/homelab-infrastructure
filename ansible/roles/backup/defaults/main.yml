@@ -24,3 +24,8 @@ backup_exports_max_age_hours: 6
 
 # Local to this node and otherwise unprotected: the mirror propagates deletes.
 backup_sftp_dir: "/home/{{ ansible_user }}/stacks/edge/sftp_data"
+
+# MongoDB is dumped over the overlay once its backup account has a password in the vault.
+backup_mongodb_enabled: "{{ vault_mongodb_backup_password is defined }}"
+backup_mongodb_host: "{{ hostvars[groups['controller'][0]].wg_overlay_ip }}"
+backup_mongodb_port: 27017

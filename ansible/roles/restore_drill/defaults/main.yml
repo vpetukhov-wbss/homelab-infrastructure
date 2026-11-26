@@ -1,0 +1,13 @@
+---
+# Both copies of the newest archive must exist and be identical; the first one is restored.
+# node3's copy comes first on purpose: it is the one left if node1 is lost.
+restore_drill_copies:
+  - { host: node3-data, dir: /srv/homelab-sync/data/backups }
+  - { host: node1-gateway, dir: "/home/{{ ansible_user }}/backups" }
+restore_drill_max_age_hours: 26           # the job is nightly
+restore_drill_mount: /run/homelab-restore-drill
+restore_drill_mount_size: 1g
+restore_drill_pg_db: homelab
+restore_drill_gitea_uid: "1000"
+restore_drill_sftp_uid: "1001"
+restore_drill_wg_peer: "{{ hostvars['node1-gateway'].wg_overlay_ip }}"

@@ -1,0 +1,294 @@
+#!/bin/bash
+# Managed by Ansible (homelab) — restores a backup archive into throwaway containers.
+#
+#   homelab-restore-drill <archive>
+#   stdin, one per line: archive passphrase, PostgreSQL password, RabbitMQ password
+#
+# Decrypted data exists only in a RAM mount that cannot be swapped out, and every
+# container runs without a network, so a restored service can reach nothing. Only names
+# and counts are printed: the dumps hold password hashes and private keys.
+set -uo pipefail   # no -e: every step reports its own result
+umask 077
+export LC_ALL=C
+
+ARCHIVE="${1:?usage: homelab-restore-drill <archive>}"
+IFS= read -r ARCHIVE_PASS
+IFS= read -r PG_PASS
+IFS= read -r MQ_PASS
+
+W="{{ restore_drill_mount }}"
+A="$W/archive"
+EXPORTS="$A/node3-exports"
+FAILED=0
+
+if mountpoint -q "$W"; then echo "FATAL: $W is already mounted; another drill?"; exit 1; fi
+
+cleanup() {
+  local rc=$? left try
+  trap - EXIT
+  cd / || true
+  pkill -TERM -P $$ || true   # a step still running would keep the mount busy
+  for try in 1 2 3 4 5 6 7 8 9 10; do
+    left="$(docker ps -aq --filter label=homelab.drill)"
+    # shellcheck disable=SC2086
+    [ -z "$left" ] || docker rm -fv $left >/dev/null
+    mountpoint -q "$W" || break
+    umount "$W" 2>/dev/null && break
+    sleep 1
+  done
+  if mountpoint -q "$W"; then
+    echo "FAIL  cleanup   DECRYPTED DATA IS STILL MOUNTED at $W (tried $try times)"
+    exit 1
+  fi
+  rmdir "$W"
+  exit "$rc"
+}
+trap cleanup EXIT
+mkdir -p "$W"
+mount -t tmpfs -o "size={{ restore_drill_mount_size }},mode=0700,noswap" tmpfs "$W" || exit 1
+mkdir "$A"
+
+fail() { echo "$*"; exit 1; }
+empty() { [ "$1" -ne 0 ] || echo " (empty at the source: this proves only that it loads)"; }
+
+# Call it as a plain statement: inside `if` or `||` bash would ignore the -e below.
+step() {
+  local name="$1" t0="$SECONDS" out rc
+  out="$(set -eE; trap 'echo "command failed at line $LINENO"' ERR; "drill_$name" 2>"$W/stderr")"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    printf 'ok    %-10s%3ss  %s\n' "$name" "$((SECONDS - t0))" "$out"
+  else
+    printf 'FAIL  %-10s%3ss  %s\n' "$name" "$((SECONDS - t0))" "$(echo "$out" | tail -n 1)"
+    FAILED=1
+  fi
+}
+
+run() {   # run <name> <docker run arguments>
+  local name="$1"; shift
+  docker run -d --rm --name "drill-$name" --label homelab.drill --network none --log-driver none \
+    --security-opt no-new-privileges --memory 768m "$@" >/dev/null
+}
+
+# A client that waits for input forever must not leave decrypted data mounted.
+dexec() { timeout -k 5 120 docker exec "$@"; }
+
+wait_for() {   # wait_for <seconds> <command>
+  local end=$((SECONDS + $1)); shift
+  until "$@" >/dev/null 2>&1; do
+    [ "$SECONDS" -lt "$end" ] || return 1
+    sleep 1
+  done
+}
+
+drill_archive() {
+  local stamp age unknown f
+  stamp="$(basename "$ARCHIVE" | sed -nE 's/^homelab-([0-9]{8})-([0-9]{2})([0-9]{2})([0-9]{2})\.tar\.gz\.enc$/\1 \2:\3:\4/p')"
+  [ -n "$stamp" ] || fail "not an archive name"
+  age=$(( ($(date +%s) - $(date -u -d "$stamp" +%s)) / 3600 ))
+  [ "$age" -le {{ restore_drill_max_age_hours }} ] || fail "the newest archive is ${age}h old"
+  printf '%s\n' "$ARCHIVE_PASS" \
+    | openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass stdin -in "$ARCHIVE" \
+    | tar -xz --numeric-owner -C "$A" || fail "does not decrypt or unpack"
+  for f in postgres-globals.sql postgres.dump redis.rdb rabbitmq-definitions.json sftp-tree.tar \
+           etc-wireguard.tar node3-exports/EXPORTED_AT node3-exports/gitea-dump.zip; do
+    [ -s "$A/$f" ] || fail "missing or empty: $f"
+  done
+  # A new kind of backup must get a step here, not be silently skipped.
+  unknown="$(cd "$A" && find . -type f ! -path './node3-exports/sqlite/*' -printf '%P\n' \
+    | grep -vxE 'postgres-globals\.sql|postgres\.dump|redis\.rdb|rabbitmq-definitions\.json|sftp-tree\.tar|etc-wireguard\.tar|node3-exports/(EXPORTED_AT|gitea-dump\.zip)' || true)"
+  [ -z "$unknown" ] || fail "no drill step for: $(echo "$unknown" | tr '\n' ' ')"
+  echo "$(basename "$ARCHIVE"), ${age}h old; node3 exported at $(cat "$EXPORTS/EXPORTED_AT")"
+}
+
+drill_postgres() {
+  local errors tables_dump tables rows_dump rows logins repl
+  psql_drill() { dexec drill-postgres psql -U postgres -d {{ restore_drill_pg_db }} -Atc "$1"; }
+  mkdir "$W/postgres"
+  POSTGRES_PASSWORD="$(openssl rand -hex 16)" run postgres -e POSTGRES_PASSWORD \
+    -e POSTGRES_DB={{ restore_drill_pg_db }} -e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 \
+    -v "$W/postgres:/var/lib/postgresql/data" {{ image_postgres }}
+  # The image's init phase listens on the socket only, so ask over TCP.
+  wait_for 90 dexec drill-postgres pg_isready -h 127.0.0.1 -U postgres || fail "does not start"
+
+  # A fresh cluster already has its superuser; that is the only error allowed.
+  dexec -i drill-postgres psql -q -U postgres -d postgres \
+    < "$A/postgres-globals.sql" >/dev/null 2>"$W/pg-globals.err"
+  errors="$(grep ERROR "$W/pg-globals.err" | grep -vc 'role "postgres" already exists$' || true)"
+  [ "$errors" -eq 0 ] || fail "globals: $errors unexpected error(s)"
+  dexec -i drill-postgres pg_restore -U postgres -d {{ restore_drill_pg_db }} \
+    --clean --if-exists --exit-on-error < "$A/postgres.dump" || fail "pg_restore failed"
+
+  tables_dump="$(dexec -i drill-postgres pg_restore --list < "$A/postgres.dump" | grep -c ' TABLE DATA ' || true)"
+  tables="$(psql_drill 'select count(*) from pg_stat_user_tables')"
+  [ "$tables" = "$tables_dump" ] || fail "$tables tables, the dump has $tables_dump"
+  rows_dump="$(dexec -i drill-postgres pg_restore --data-only -f - < "$A/postgres.dump" \
+    | awk '/^COPY .* FROM stdin;$/ {c = 1; next} /^\\\.$/ {c = 0} c {n++} END {print n + 0}')"
+  rows="$(psql_drill "select coalesce(sum((xpath('/row/n/text()', query_to_xml(format('select count(*) as n from %I.%I', schemaname, relname), false, true, '')))[1]::text::bigint), 0) from pg_stat_user_tables")"
+  [ "$rows" = "$rows_dump" ] || fail "$rows rows, the dump has $rows_dump"
+
+  # The real password must work after the restore, and a wrong one must not.
+  PGPASSWORD="$PG_PASS" dexec -e PGPASSWORD drill-postgres \
+    psql -h 127.0.0.1 -U postgres -d {{ restore_drill_pg_db }} -Atc 'select 1' >/dev/null || fail "the vault's password is refused"
+  if PGPASSWORD=wrong dexec -e PGPASSWORD drill-postgres \
+    psql -h 127.0.0.1 -U postgres -d {{ restore_drill_pg_db }} -Atc 'select 1' >/dev/null; then fail "any password is accepted"; fi
+  logins="$(psql_drill 'select count(*) from pg_roles where rolcanlogin')"
+  repl="$(psql_drill "select count(*) from pg_roles where rolreplication and rolname <> 'postgres'")"
+  [ "$repl" -ge 1 ] || fail "the replication role is missing"
+  echo "$tables table(s), $rows row(s), $logins login role(s) with their passwords"
+}
+
+drill_redis() {
+  local keys keys_rdb after
+  redis_drill() { dexec drill-redis redis-cli "$@"; }
+  mkdir "$W/redis"
+  cp "$A/redis.rdb" "$W/redis/dump.rdb"
+  keys_rdb="$(docker run --rm --label homelab.drill --network none --log-driver none \
+    -v "$A/redis.rdb:/dump.rdb:ro" {{ image_redis }} redis-check-rdb /dump.rdb \
+    | sed -nE 's/^\[info\] ([0-9]+) keys read$/\1/p')"
+  [ -n "$keys_rdb" ] || fail "the snapshot is not readable"
+  # With AOF on, Redis ignores the snapshot: start without it, switch it on, restart.
+  run redis -v "$W/redis:/data" {{ image_redis }} redis-server --appendonly no
+  wait_for 30 dexec drill-redis redis-cli ping || fail "does not start"
+  keys="$(redis_drill dbsize)"
+  [ "$keys" = "$keys_rdb" ] || fail "$keys keys, the snapshot has $keys_rdb"
+  redis_drill set homelab:drill 1 >/dev/null
+  redis_drill config set appendonly yes >/dev/null
+  aof_ready() { redis_drill info persistence | tr -d '\r' | grep -qx aof_rewrite_in_progress:0 && redis_drill info persistence | tr -d '\r' | grep -qx aof_enabled:1; }
+  wait_for 30 aof_ready || fail "AOF was not switched on"
+  docker stop drill-redis >/dev/null
+  wait_for 30 sh -c '! docker inspect drill-redis' || fail "does not stop"
+  rm "$W/redis/dump.rdb"   # what comes back now can only come from the AOF
+  run redis -v "$W/redis:/data" {{ image_redis }} redis-server --appendonly yes
+  wait_for 30 dexec drill-redis redis-cli ping || fail "does not start from the AOF"
+  after="$(redis_drill dbsize)"
+  [ "$after" = "$((keys + 1))" ] || fail "$after keys after the AOF restart, expected $((keys + 1))"
+  echo "$keys key(s), still there after a restart from the AOF$(empty "$keys")"
+}
+
+drill_rabbitmq() {
+  mkdir "$W/rabbitmq"
+  run rabbitmq --hostname drill --add-host drill:127.0.0.1 -v "$W/rabbitmq:/var/lib/rabbitmq" {{ rabbitmq_image }}
+  # Not rabbitmqctl: run before the server, it creates the Erlang cookie as root and the
+  # server can then never read it.
+  wait_for 120 dexec drill-rabbitmq nc -z 127.0.0.1 5672 || fail "does not start"
+  wait_for 30 dexec drill-rabbitmq rabbitmq-diagnostics -q check_running || fail "does not finish starting"
+  # From a file: on standard input rabbitmqctl waits forever.
+  dexec -i drill-rabbitmq sh -c 'cat > /tmp/before.json' < "$A/rabbitmq-definitions.json"
+  dexec drill-rabbitmq rabbitmqctl -q import_definitions /tmp/before.json >/dev/null || fail "import failed"
+  dexec drill-rabbitmq rabbitmqctl -q export_definitions /tmp/after.json >/dev/null
+  dexec drill-rabbitmq cat /tmp/after.json > "$W/rabbitmq-after.json"
+  # Everything in the archive must be in the broker, password hashes included. The broker
+  # may add fields of its own (it does to an existing vhost).
+  python3 -I - "$A/rabbitmq-definitions.json" "$W/rabbitmq-after.json" <<'PY' || fail "the broker does not match the archive"
+import json, sys
+before, after = (json.load(open(p)) for p in sys.argv[1:3])
+
+def within(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        return all(k in b and within(v, b[k]) for k, v in a.items())
+    return a == b
+
+counts = []
+for section, items in before.items():
+    if not isinstance(items, list):
+        continue
+    for item in items:
+        if not any(within(item, other) for other in after.get(section, [])):
+            sys.exit(section)
+    if items:
+        counts.append(f"{len(items)} {section}")
+print(", ".join(counts), end="; ")
+PY
+  # Over HTTP: rabbitmqctl authenticate_user takes the password only as an argument here.
+  mq_login() {
+    printf 'GET /api/whoami HTTP/1.0\r\nAuthorization: Basic %s\r\n\r\n' "$(printf '%s:%s' {{ rabbitmq_user | default('homelab') }} "$1" | base64 -w 0)" \
+      | dexec -i drill-rabbitmq nc -w 10 127.0.0.1 15672 | awk 'NR == 1 {ok = ($2 == 200)} END {exit !ok}'
+  }
+  wait_for 30 mq_login "$MQ_PASS" || fail "the vault's password is refused"
+  if mq_login wrong; then fail "any password is accepted"; fi
+  echo "the vault's password works"
+}
+
+drill_sqlite() {
+  python3 -I - "$EXPORTS/sqlite" <<'PY' || fail "a database is damaged"
+import pathlib, sqlite3, sys
+files = tables = rows = 0
+for path in sorted(p for p in pathlib.Path(sys.argv[1]).rglob("*") if p.is_file()):
+    db = sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
+    if db.execute("pragma integrity_check").fetchone()[0] != "ok":
+        sys.exit(path.name)
+    for (name,) in db.execute("select name from sqlite_master where type = 'table'").fetchall():
+        tables += 1
+        rows += db.execute('select count(*) from "%s"' % name.replace('"', '""')).fetchone()[0]
+    files += 1
+print(f"{files} database(s), {tables} table(s), {rows} row(s)")
+PY
+}
+
+drill_gitea() {
+  local users users_db repos repos_db
+  mkdir -p "$W/gitea-dump" "$W/gitea/git/repositories"
+  python3 -I -m zipfile -e "$EXPORTS/gitea-dump.zip" "$W/gitea-dump"
+  mv "$W/gitea-dump/data" "$W/gitea/gitea"
+  cp "$W/gitea-dump/app.ini" "$W/gitea/gitea/conf/app.ini"
+  if [ -d "$W/gitea-dump/repos" ]; then cp -a "$W/gitea-dump/repos/." "$W/gitea/git/repositories/"; fi
+  # The database comes from the SQL dump; the copied gitea.db was taken while in use.
+  rm -f "$W"/gitea/gitea/gitea.db*
+  users_db="$(python3 -I - "$W/gitea/gitea/gitea.db" "$W/gitea-dump/gitea-db.sql" <<'PY'
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+db.executescript(open(sys.argv[2], encoding="utf-8").read())
+if db.execute("pragma integrity_check").fetchone()[0] != "ok":
+    sys.exit(1)
+print(db.execute("select count(*) from user where type = 0").fetchone()[0],
+      db.execute("select count(*) from repository").fetchone()[0])
+PY
+)" || fail "the SQL dump does not load"
+  read -r users_db repos_db <<< "$users_db"
+  chown -R {{ restore_drill_gitea_uid }}:{{ restore_drill_gitea_uid }} "$W/gitea"
+  run gitea -e USER_UID={{ restore_drill_gitea_uid }} -e USER_GID={{ restore_drill_gitea_uid }} -v "$W/gitea:/data" {{ gitea_image }}
+  wait_for 120 dexec drill-gitea curl -fsS http://127.0.0.1:3000/api/healthz || fail "does not become healthy"
+  users="$(dexec -u git drill-gitea gitea admin user list --config /data/gitea/conf/app.ini | tail -n +2 | grep -c . || true)"
+  [ "$users" = "$users_db" ] || fail "$users users, the dump has $users_db"
+  repos=0
+  while IFS= read -r -d '' repo; do
+    dexec -u git drill-gitea git -C "/data/git/repositories/${repo#"$W/gitea/git/repositories/"}" fsck --full >/dev/null || fail "a repository is damaged"
+    repos=$((repos + 1))
+  done < <(find "$W/gitea/git/repositories" -mindepth 2 -maxdepth 2 -type d -name '*.git' ! -name '*.wiki.git' -print0)
+  [ "$repos" = "$repos_db" ] || fail "$repos repositories, the dump has $repos_db"
+  echo "healthy, $users user(s), $repos repository(ies)$(empty "$((users + repos))")"
+}
+
+drill_sftp() {
+  local files foreign
+  mkdir "$W/sftp"
+  tar -C "$W/sftp" --numeric-owner -xf "$A/sftp-tree.tar"
+  foreign="$(find "$W/sftp" \( ! -uid {{ restore_drill_sftp_uid }} -o ! -gid {{ restore_drill_sftp_uid }} \) | wc -l)"
+  [ "$foreign" -eq 0 ] || fail "$foreign entries do not belong to {{ restore_drill_sftp_uid }}"
+  files="$(find "$W/sftp" -type f | wc -l)"
+  echo "$files file(s), all owned by {{ restore_drill_sftp_uid }}"
+}
+
+drill_wireguard() {
+  local pub peer
+  mkdir "$W/wireguard"
+  tar -C "$W/wireguard" -xf "$A/etc-wireguard.tar"
+  pub="$(wg pubkey < "$W/wireguard/wireguard/wg1.private")"
+  peer="$(wg show wg1 allowed-ips | awk '$2 == "{{ restore_drill_wg_peer }}/32" {print $1}')"
+  [ -n "$peer" ] || fail "this node has no peer {{ restore_drill_wg_peer }}"
+  [ "$pub" = "$peer" ] || fail "the archived key is not the one node1 uses"
+  echo "the archived wg1 key is node1's live identity"
+}
+
+START="$SECONDS"
+step archive
+if [ "$FAILED" -eq 0 ]; then
+  for s in postgres redis rabbitmq sqlite gitea sftp wireguard; do step "$s"; done
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "RESULT: everything restored in $((SECONDS - START))s"
+else
+  echo "RESULT: FAILED after $((SECONDS - START))s"
+fi
+exit "$FAILED"

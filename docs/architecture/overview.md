@@ -203,9 +203,9 @@ Two properties matter more than the schedule:
 - **Every run verifies its own archive** by decrypting and listing it, and deletes it
   on failure. An unverified backup is a guess.
 
-The original format was restore-drilled end to end on 2026-11-20 (a seeded row dumped,
-encrypted, decrypted, restored into a throwaway database and read back). The extended
-format of 2026-11-21 has not been drilled yet.
+The current format was restored end to end on 2026-11-24, into throwaway containers on
+node4 and from node3's copy. The drill is a playbook, `restore-drill.yml`, and its limits
+are in [the runbook](../runbooks/backup-restore.md#drill-about-monthly-an-untested-backup-is-a-guess).
 
 Note that neither the PostgreSQL standby nor the SFTP mirror is a backup — both
 propagate `DROP TABLE` and corruption within milliseconds. Only these archives do.

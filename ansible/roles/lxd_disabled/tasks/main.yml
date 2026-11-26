@@ -1,0 +1,53 @@
+---
+# A member of the lxd group is root without a password: the socket installs the LXD snap as
+# root on request, and LXD starts privileged containers for the group. Ubuntu's installer puts
+# the first account in it, and node4's account is deliberately kept out of docker.
+
+- name: Mask the LXD installer socket
+  ansible.builtin.systemd:
+    name: lxd-installer.socket
+    state: stopped
+    masked: true
+  become: true
+
+# Stopping the unit leaves the file behind (RemoveOnStop defaults to no).
+- name: Remove the dead socket file
+  ansible.builtin.file:
+    path: /run/lxd-installer.socket
+    state: absent
+  become: true
+
+- name: Read the members of the lxd group
+  ansible.builtin.getent:
+    database: group
+    key: lxd
+    fail_key: false
+
+- name: Empty the lxd group
+  ansible.builtin.command: gpasswd -d {{ item }} lxd
+  loop: "{{ lxd_disabled_members.split(',') | select | list }}"
+  vars:
+    lxd_disabled_members: "{{ (ansible_facts.getent_group.lxd or ['', '', ''])[2] }}"
+  changed_when: true
+  become: true
+
+# --- Effective state -------------------------------------------------------------
+- name: Read the group, the unit and the socket
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      echo "members=$(getent group lxd | cut -d: -f4)"
+      echo "enabled=$(systemctl is-enabled lxd-installer.socket)"
+      echo "active=$(systemctl is-active lxd-installer.socket)"
+      echo "socket=$(test -e /run/lxd-installer.socket && echo present || echo absent)"
+    executable: /bin/bash
+  register: lxd_disabled_live
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Assert that LXD is out of reach
+  ansible.builtin.assert:
+    that: lxd_disabled_live.stdout_lines == ['members=', 'enabled=masked', 'active=inactive', 'socket=absent']
+    fail_msg: "{{ lxd_disabled_live.stdout_lines }}"
+    quiet: true
+  when: not ansible_check_mode

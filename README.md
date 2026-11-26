@@ -154,9 +154,8 @@ flowchart TB
 ~~~
 
 A standby and a mirror copy a `DROP TABLE` within milliseconds, so only the encrypted
-archives count as backups. The original archive format was restore-drilled on
-2026-11-20; the extended format has not been drilled yet, and there is no off-site copy
-(roadmap M8).
+archives count as backups. The current archive format was restored in full, into throwaway
+containers, on 2026-11-24 (`restore-drill.yml`); there is no off-site copy (roadmap M8).
 
 ## When a machine dies
 

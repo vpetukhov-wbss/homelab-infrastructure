@@ -144,7 +144,12 @@ the password manager never shares a host with CI jobs.
   `inventory/group_vars/controller/firewall.yml`.
 - [x] Docker on node4 (2026-11-24): 29.10.0, `live-restore`, json-file log rotation,
   ordered after `wg1` and the guard. The owner's account is not in the `docker` group.
-- [ ] Wi-Fi power saving off on node4.
+- [x] Wi-Fi power saving off on node4 (2026-11-24, role `wifi_power_save`). Packets to an
+  idle node4, 1 s apart: 37.5% lost from node1 and 42.5% from node2 before, 0 of 60 from
+  each after. The reboot below also has to prove that it persists.
+- [x] No LXD on node4 (2026-11-24, role `lxd_disabled`): the installer's first account is
+  in the `lxd` group, which is root without a password as long as `lxd-installer.socket`
+  listens. The group is empty and the socket masked; a second run changes nothing.
 - [x] A become password for node4 (2026-11-24). The `ansible_become_pass` in
   `group_vars/homelab/vault.yml` is node1–3's and fails on node4 (verified 2026-11-23,
   with both `sudo-rs` 0.2.13, the 26.04 default, and the classic `sudo.ws`). node4's own
@@ -191,6 +196,9 @@ Each service goes through `/service-onboard`, which produces:
 - a row in the service catalog.
 
 - [ ] **MongoDB 8**: a single-node replica set, so transactions and change streams work.
+  The role and the backup step are written and were tried on node4 with MongoDB 7.0 and
+  throwaway passwords (2026-11-24): idempotent, authentication enforced, a dump, drop and
+  restore returned 500 of 500 documents. Blocked by node4's kernel until the M3 reboot.
   No HA is claimed. WiredTiger cache capped; `mongodump` in the nightly backup.
 - [ ] **LocalStack**: licensing decision first (see below).
 - [ ] **Monitoring**: HomeLab Pulse (decided 2026-11-24, instead of Prometheus and
@@ -234,7 +242,13 @@ been drilled.
 
 - [ ] Keep an off-site encrypted copy of the backups, with the backup key held offline
   (age) and its custody decided.
-- [ ] Run a full restore drill of the current archive format into throwaway containers.
+- [x] Run a full restore drill of the current archive format into throwaway containers
+  (2026-11-24, `playbooks/restore-drill.yml`, from node3's copy): all eight parts restored
+  and matched the live counts. Redis and Gitea are empty in production, so those two were
+  also tried with synthetic data ([runbook](runbooks/backup-restore.md#drill-about-monthly-an-untested-backup-is-a-guess)).
+- [x] The backup job on node1 no longer reports success without RabbitMQ (2026-11-24).
+  The archive it wrote was restored by the drill the same evening, 8 of 8. The failing
+  branch was exercised with a stubbed `docker`, not by stopping the live broker.
 - [ ] Reboot node3 onto its pending kernel, after a controlled Redis failover (needs the
   owner's go-ahead; see the [runbook](runbooks/redis-failover-and-reboots.md)).
 - [ ] Have the PostgreSQL dump use a `pg_read_all_data` role instead of the superuser.

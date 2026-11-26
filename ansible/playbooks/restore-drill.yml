@@ -1,0 +1,9 @@
+---
+# Restore drill, about monthly: the newest backup into throwaway containers on node4.
+# Not part of site.yml: it deploys nothing. See docs/runbooks/backup-restore.md.
+- name: Restore drill
+  hosts: controller
+  become: true
+  gather_facts: false
+  roles:
+    - restore_drill
